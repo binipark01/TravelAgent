@@ -1,0 +1,29 @@
+services:
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://travel:travel@postgres:5432/travel
+      ENABLE_LIVE_LLM: "false"
+      ENABLE_LIVE_PROVIDERS: "false"
+      DEFAULT_LOCALE: ko-KR
+      DEFAULT_CURRENCY: KRW
+      DEFAULT_TIMEZONE: Asia/Seoul
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel
+      POSTGRES_DB: travel
+    ports:
+      - "5432:5432"
+    volumes:
+      - travel_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  travel_postgres_data:

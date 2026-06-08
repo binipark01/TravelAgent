@@ -1,0 +1,179 @@
+flights:
+  - name: amadeus
+    source_type: official_api
+    connector: AmadeusFlightConnector
+    status: enabled_when_configured
+    required_env: [AMADEUS_CLIENT_ID, AMADEUS_CLIENT_SECRET]
+  - name: skyscanner
+    source_type: partner_api
+    connector: SkyscannerFlightConnector
+    status: requires_partner_access
+    required_env: [SKYSCANNER_API_KEY]
+  - name: naver_flight
+    source_type: authorized_only
+    connector: NaverFlightConnector
+    status: disabled_until_authorized
+    required_env: [NAVER_FLIGHT_AUTH_MODE]
+  - name: google_flights
+    source_type: public_page
+    connector: GoogleFlightsPublicPageConnector
+    status: enabled_by_default
+    required_env: []
+  - name: mock
+    source_type: mock
+    connector: MockFlightConnector
+    status: dev_test_only
+    required_env: []
+accommodations:
+  - name: expedia_rapid
+    source_type: partner_api
+    connector: ExpediaRapidAccommodationConnector
+    status: requires_partner_access
+    required_env: [EXPEDIA_RAPID_API_KEY, EXPEDIA_RAPID_SHARED_SECRET]
+  - name: hotelbeds
+    source_type: partner_api
+    connector: HotelbedsAccommodationConnector
+    status: enabled_when_configured
+    required_env: [HOTELBEDS_API_KEY, HOTELBEDS_SECRET]
+  - name: booking_demand
+    source_type: partner_api
+    connector: BookingDemandAccommodationConnector
+    status: requires_affiliate_access
+    required_env: [BOOKING_DEMAND_TOKEN]
+  - name: agoda_partner
+    source_type: partner_api
+    connector: AgodaPartnerAccommodationConnector
+    status: requires_partner_access
+    required_env: [AGODA_PARTNER_API_KEY, AGODA_SITE_ID]
+  - name: google_hotels_partner
+    source_type: official_api
+    connector: GoogleHotelsTravelPartnerConnector
+    status: enabled_when_configured
+    required_env: [GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_HOTELS_PARTNER_ACCOUNT]
+  - name: airbnb_public_page
+    source_type: public_page
+    connector: AirbnbPublicPageAccommodationConnector
+    status: disabled_until_authorized
+    required_env: [AIRBNB_AUTHORIZATION_MODE]
+  - name: mock
+    source_type: mock
+    connector: MockAccommodationConnector
+    status: dev_test_only
+    required_env: []
+places:
+  - name: google_places
+    source_type: official_api
+    connector: GooglePlacesConnector
+    status: enabled_when_configured
+    required_env: [GOOGLE_MAPS_API_KEY]
+  - name: kakao_local
+    source_type: official_api
+    connector: KakaoLocalConnector
+    status: enabled_when_configured
+    required_env: [KAKAO_REST_API_KEY]
+  - name: kto_tourapi
+    source_type: official_api
+    connector: KtoTourApiConnector
+    status: enabled_when_configured
+    required_env: [KTO_TOUR_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockPlacesConnector
+    status: dev_test_only
+    required_env: []
+routes:
+  - name: google_routes
+    source_type: official_api
+    connector: GoogleRoutesConnector
+    status: enabled_when_configured
+    required_env: [GOOGLE_MAPS_API_KEY]
+  - name: naver_directions
+    source_type: official_api
+    connector: NaverDirectionsConnector
+    status: enabled_when_configured
+    required_env: [NAVER_MAPS_CLIENT_ID, NAVER_MAPS_CLIENT_SECRET]
+  - name: kakao_mobility
+    source_type: official_api
+    connector: KakaoMobilityConnector
+    status: enabled_when_configured
+    required_env: [KAKAO_MOBILITY_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockRoutesConnector
+    status: dev_test_only
+    required_env: []
+activities:
+  - name: viator
+    source_type: partner_api
+    connector: ViatorActivityConnector
+    status: requires_partner_access
+    required_env: [VIATOR_API_KEY]
+  - name: getyourguide
+    source_type: partner_api
+    connector: GetYourGuideActivityConnector
+    status: requires_partner_access
+    required_env: [GETYOURGUIDE_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockActivityConnector
+    status: dev_test_only
+    required_env: []
+visa:
+  - name: sherpa
+    source_type: partner_api
+    connector: SherpaVisaConnector
+    status: requires_partner_access
+    required_env: [SHERPA_API_KEY]
+  - name: timatic
+    source_type: partner_api
+    connector: TimaticVisaConnector
+    status: requires_partner_access
+    required_env: [TIMATIC_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockVisaConnector
+    status: dev_test_only
+    required_env: []
+safety:
+  - name: mofa
+    source_type: official_api
+    connector: MofaSafetyConnector
+    status: enabled_when_configured
+    required_env: [MOFA_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockSafetyConnector
+    status: dev_test_only
+    required_env: []
+weather:
+  - name: open_meteo
+    source_type: official_api
+    connector: OpenMeteoWeatherConnector
+    status: enabled_by_default
+    required_env: []
+  - name: openweather
+    source_type: official_api
+    connector: OpenWeatherConnector
+    status: enabled_when_configured
+    required_env: [OPENWEATHER_API_KEY]
+  - name: mock
+    source_type: mock
+    connector: MockWeatherConnector
+    status: dev_test_only
+    required_env: []
+fx:
+  - name: frankfurter
+    source_type: official_api
+    connector: FrankfurterFxConnector
+    status: enabled_by_default
+    required_env: []
+  - name: open_exchange_rates
+    source_type: official_api
+    connector: OpenExchangeRatesConnector
+    status: enabled_when_configured
+    required_env: [OPEN_EXCHANGE_RATES_APP_ID]
+  - name: mock
+    source_type: mock
+    connector: MockFxConnector
+    status: dev_test_only
+    required_env: []

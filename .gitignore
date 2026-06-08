@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+travel_agent.db
+*.sqlite
+*.sqlite3
+.backend.pid
+.frontend.pid
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+node_modules/
+dist/
+
+# 시크릿 / 환경변수
+.env
+*.env
+.env.*
+
+# Claude Code 로컬 (워크트리는 외부 저장소 체크아웃이므로 제외)
+.claude/worktrees/
+
+# OS / 로그
+.DS_Store
+Thumbs.db
+*.log

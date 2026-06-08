@@ -1,0 +1,144 @@
+import type { ApprovalRequest, BookingRecord } from './approval'
+import type { BudgetEstimate } from './budget'
+import type { CriticFinding, Location, Money, ProviderMetadata, SourceRef, TripStatus } from './common'
+import type { Itinerary } from './itinerary'
+
+export interface TripBrief {
+  origin?: string | null
+  destinations: string[]
+  start_date?: string | null
+  end_date?: string | null
+  flexible_dates: boolean
+  duration_days?: number | null
+  travelers?: number | null
+  budget_total?: number | null
+  budget_per_person?: number | null
+  currency: string
+  travel_style?: string | null
+  pace?: string | null
+  accommodation_preference?: string | null
+  transport_preference?: string | null
+  accessibility_needs: string[]
+  dietary_restrictions: string[]
+  passport_country?: string | null
+  visa_status_known: boolean
+  must_include: string[]
+  must_avoid: string[]
+  missing_fields: string[]
+  assumptions: string[]
+}
+
+export interface FlightOption {
+  option_id: string
+  airline: string
+  origin: string
+  destination: string
+  departure_time: string
+  arrival_time: string
+  return_departure_time?: string | null
+  return_arrival_time?: string | null
+  price: Money
+  refundable: boolean
+  booking_required: boolean
+  metadata: ProviderMetadata
+  notes: string[]
+}
+
+export interface AccommodationOption {
+  option_id: string
+  name: string
+  location: Location
+  nightly_price: Money
+  total_price: Money
+  rating?: number | null
+  cancellation_policy: string
+  metadata: ProviderMetadata
+  notes: string[]
+}
+
+export interface POIOption {
+  poi_id: string
+  title: string
+  type: string
+  location: Location
+  area: string
+  estimated_cost: Money
+  rating?: number | null
+  opening_hours?: string | null
+  recommended_duration_minutes: number
+  booking_required: boolean
+  metadata: ProviderMetadata
+  notes: string[]
+}
+
+export interface TripPlanState {
+  trip_id: string
+  user_id?: string | null
+  locale: string
+  currency: string
+  timezone: string
+  raw_user_message: string
+  raw_user_messages: string[]
+  brief?: TripBrief | null
+  user_profile_snapshot: Record<string, unknown>
+  constraints: Record<string, unknown>
+  missing_fields: string[]
+  assumptions: string[]
+  destination_candidates: string[]
+  selected_destination?: string | null
+  transport_options: FlightOption[]
+  accommodation_options: AccommodationOption[]
+  poi_candidates: POIOption[]
+  activity_options: POIOption[]
+  local_transport_options: Array<Record<string, unknown>>
+  route_evidence_refs: string[]
+  draft_itinerary?: Itinerary | null
+  optimized_itinerary?: Itinerary | null
+  budget?: BudgetEstimate | null
+  risk_findings: CriticFinding[]
+  critic_findings: CriticFinding[]
+  approval_requests: ApprovalRequest[]
+  booking_records: BookingRecord[]
+  source_refs: SourceRef[]
+  evidence_refs: string[]
+  status: TripStatus
+}
+
+export interface TripCreateRequest {
+  message: string
+  user_id?: string | null
+  locale: string
+  currency: string
+  timezone: string
+}
+
+export interface TripMessageRequest {
+  message: string
+}
+
+export interface TripSummaryResponse {
+  trip_id: string
+  status: TripStatus
+  summary: string
+  missing_fields: string[]
+  questions: string[]
+  state?: TripPlanState | null
+}
+
+export interface FinalPlanResponse {
+  trip_id: string
+  status: TripStatus
+  summary: string
+  assumptions: string[]
+  missing_fields: string[]
+  recommended_destination?: string | null
+  transport_options: FlightOption[]
+  accommodation_options: AccommodationOption[]
+  itinerary?: Itinerary | null
+  budget?: BudgetEstimate | null
+  risk_findings: CriticFinding[]
+  critic_findings: CriticFinding[]
+  approval_requests: ApprovalRequest[]
+  source_refs: SourceRef[]
+  next_actions: string[]
+}
