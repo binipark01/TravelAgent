@@ -29,15 +29,53 @@ _KIND_QUERY = {
 }
 _KIND_DEFAULT_TYPE = {"restaurant": "맛집", "attraction": "관광지"}
 
+# 취향 키워드(한/영) -> 구글맵 검색어. 사용자가 명시하면 이걸 검색에 반영한다.
+_CUISINE_INTEREST = {
+    "스시": "sushi", "초밥": "sushi", "sushi": "sushi",
+    "라멘": "ramen", "ramen": "ramen", "소바": "soba", "우동": "udon",
+    "이자카야": "izakaya", "야키니쿠": "yakiniku bbq", "야끼니꾸": "yakiniku bbq",
+    "스키야키": "sukiyaki", "샤브샤브": "shabu shabu", "텐푸라": "tempura",
+    "튀김": "tempura", "돈카츠": "tonkatsu", "장어": "unagi eel",
+    "해산물": "seafood", "회": "sashimi", "스테이크": "steak", "고기": "bbq",
+    "카페": "cafe", "디저트": "dessert", "베이커리": "bakery",
+    "오코노미야키": "okonomiyaki", "타코야키": "takoyaki",
+    "한식": "korean restaurant", "중식": "chinese restaurant",
+    "쌀국수": "pho", "딤섬": "dim sum", "마라": "mala hotpot",
+}
+_ATTRACTION_INTEREST = {
+    "박물관": "museums", "미술관": "art museums", "공원": "parks",
+    "쇼핑": "shopping", "온천": "onsen hot springs", "야경": "night view spots",
+    "전망대": "observation decks", "신사": "shrines", "절": "temples",
+    "사찰": "temples", "성": "castles", "수족관": "aquarium", "동물원": "zoo",
+    "정원": "gardens", "시장": "markets", "테마파크": "theme parks",
+}
 
-def build_maps_query(destination: str, kind: str = "restaurant") -> str:
+
+def detect_interest(text: str | None, kind: str) -> str | None:
+    """요청 문구에서 취향 키워드를 찾아 구글맵 검색어로 바꾼다(없으면 None)."""
+    if not text:
+        return None
+    lowered = text.lower()
+    table = _ATTRACTION_INTEREST if kind == "attraction" else _CUISINE_INTEREST
+    for keyword, term in table.items():
+        if keyword in lowered:
+            return term
+    return None
+
+
+def build_maps_query(
+    destination: str, kind: str = "restaurant", interest: str | None = None
+) -> str:
     city = destination.split(",")[0].strip()
+    if interest:
+        return f"best {interest} in {city}"
     template = _KIND_QUERY.get(kind, _KIND_QUERY["restaurant"])
     return template.format(city=city)
 
 
-def build_maps_url(destination: str, kind: str = "restaurant") -> str:
-    return f"https://www.google.com/maps/search/{quote_plus(build_maps_query(destination, kind))}"
+def build_maps_url(destination: str, kind: str = "restaurant", interest: str | None = None) -> str:
+    query = build_maps_query(destination, kind, interest)
+    return f"https://www.google.com/maps/search/{quote_plus(query)}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,10 +83,15 @@ class GooglePlacesBrowserExtractor:
     timeout_seconds: int = 35
 
     def extract(
-        self, destination: str, *, kind: str = "restaurant", limit: int = 10
+        self,
+        destination: str,
+        *,
+        kind: str = "restaurant",
+        interest: str | None = None,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         script_path = Path(__file__).with_name("google_places_extract.mjs")
-        url = build_maps_url(destination, kind)
+        url = build_maps_url(destination, kind, interest)
         command = ["node", str(script_path), url, str(self.timeout_seconds), str(limit)]
         try:
             completed = subprocess.run(
@@ -98,12 +141,13 @@ def extract_live_pois(
     *,
     currency: str,
     kind: str = "restaurant",
+    interest: str | None = None,
     timeout_seconds: int = 35,
     limit: int = 8,
 ) -> list[POIOption]:
     try:
         places = GooglePlacesBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-            destination, kind=kind, limit=max(limit, 10)
+            destination, kind=kind, interest=interest, limit=max(limit, 10)
         )
     except GooglePlacesExtractionError:
         return []

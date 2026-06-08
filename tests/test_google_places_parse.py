@@ -2,8 +2,20 @@ from __future__ import annotations
 
 from travel_agent.app.connectors.places.google_places_browser import (
     build_maps_query,
+    detect_interest,
     place_to_poi_option,
 )
+
+
+def test_detect_interest_and_query() -> None:
+    assert detect_interest("삿포로 스시 맛집 추천해줘", "restaurant") == "sushi"
+    assert detect_interest("라멘 먹고싶어", "restaurant") == "ramen"
+    assert detect_interest("박물관 위주로 보고싶어", "attraction") == "museums"
+    assert detect_interest("온천 가고싶다", "attraction") == "onsen hot springs"
+    assert detect_interest("그냥 여행", "restaurant") is None
+    # 취향이 있으면 검색어에 반영된다.
+    assert build_maps_query("Sapporo", "restaurant", "sushi") == "best sushi in Sapporo"
+    assert build_maps_query("Sapporo", "restaurant") == "best restaurants in Sapporo"
 
 
 def test_place_to_poi_option_maps_fields() -> None:

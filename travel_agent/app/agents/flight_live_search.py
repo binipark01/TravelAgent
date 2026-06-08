@@ -36,7 +36,7 @@ def extract_live_flight_options(
     currency: str,
     timeout_seconds: int = 40,
     limit: int = 5,
-    max_date_searches: int = 9,
+    max_date_searches: int = 6,
 ) -> list[FlightOption]:
     """유연 날짜 범위(window) 안의 출발일을 전부 검색한 뒤 좋은 후보를 추려서 정리한다.
 

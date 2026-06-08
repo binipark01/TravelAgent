@@ -52,7 +52,7 @@ class NaverBatchItem(StrictBaseModel):
 class NaverFlightBrowserExtractor:
     timeout_seconds: int = 35
     # 두 소스(네이버+구글)를 한 브라우저에서 처리하므로 탭 동시성을 약간 높인다.
-    batch_concurrency: int = 3
+    batch_concurrency: int = 4
 
     def extract(self, source_url: str, *, limit: int = 5) -> list[FlightFareCandidate]:
         script_path = Path(__file__).with_name("naver_page_text.mjs")

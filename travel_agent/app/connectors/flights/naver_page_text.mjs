@@ -94,7 +94,7 @@ async function extractOne(context, url) {
       readyPatternFor(url),
       { timeout: Math.max(5000, timeoutMs - 5000) },
     )
-    await page.waitForTimeout(Math.min(3000, Math.max(800, timeoutMs / 10)))
+    await page.waitForTimeout(Math.min(1800, Math.max(700, timeoutMs / 12)))
     const text = await page.locator('body').innerText({ timeout: 5000 })
     return { url, text, final_url: page.url() }
   } catch (error) {
