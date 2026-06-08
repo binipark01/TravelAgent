@@ -2,13 +2,9 @@ import { useMutation } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Hotel, Plane, Plus, SearchCheck } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { createAgentRun } from '../api/agent'
-import { AccommodationOptionsCard } from '../components/AccommodationOptionsCard'
 import { AgentCommandBox } from '../components/AgentCommandBox'
-import { BudgetBreakdownCard } from '../components/BudgetBreakdownCard'
 import { ErrorState } from '../components/ErrorState'
-import { ItineraryTimeline } from '../components/ItineraryTimeline'
-import { RestaurantOptionsCard } from '../components/RestaurantOptionsCard'
-import { TransportOptionsCard } from '../components/TransportOptionsCard'
+import { PlanCards } from '../components/PlanCards'
 import type { AgentRunResponse } from '../types/agent'
 import type { LLMAnswerRequest } from '../types/llm'
 import { agentDisplayLabel } from '../utils/agentDisplay'
@@ -281,34 +277,14 @@ export function HomePage() {
 }
 
 function AssistantAnswer({ data }: { data: AgentRunResponse }) {
-  const { flights, hotels, pois, activities } = realOptions(data)
-  const budget = data.partial_plan?.budget ?? null
-  const itinerary = data.partial_plan?.optimized_itinerary ?? null
-  const hasItinerary = (itinerary?.days?.length ?? 0) > 0
-  const hasCards =
-    flights.length > 0 ||
-    hotels.length > 0 ||
-    pois.length > 0 ||
-    activities.length > 0 ||
-    budget != null ||
-    hasItinerary
   return (
     <section className="assistant-answer-message" aria-label="agent 답변">
       <div className="llm-answer-text" style={{ whiteSpace: 'pre-line' }}>
         {buildAgentRunAnswer(data)}
       </div>
-      {hasCards && (
-        <div className="assistant-detail-cards" style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-          {flights.length > 0 && <TransportOptionsCard options={flights} />}
-          {hotels.length > 0 && <AccommodationOptionsCard options={hotels} />}
-          {activities.length > 0 && (
-            <RestaurantOptionsCard options={activities} eyebrow="관광" title="관광지 후보" />
-          )}
-          {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
-          {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
-          {budget != null && <BudgetBreakdownCard budget={budget} />}
-        </div>
-      )}
+      <div style={{ marginTop: 12 }}>
+        <PlanCards plan={data.partial_plan} />
+      </div>
     </section>
   )
 }

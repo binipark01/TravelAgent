@@ -101,3 +101,13 @@ export interface AgentRunDetailResponse {
   state_summary: TripStateSummary
   state: TripPlanState
 }
+
+export interface AgentRunSummary {
+  run_id: string
+  trip_id: string
+  status: AgentRunStatus
+  created_at: string
+  message: string
+  destination?: string | null
+  date_range?: string | null
+}

@@ -20,6 +20,7 @@ from travel_agent.app.schemas.agent import (
     AgentRunDetailResponse,
     AgentRunResponse,
     AgentRunStatus,
+    AgentRunSummary,
     AgentStep,
     AgentStepStatus,
     TripStateSummary,
@@ -130,6 +131,33 @@ class AgentRuntime:
     def get_events(self, run_id: str) -> list[AgentEvent]:
         self.run_repository.get_run(run_id)
         return self.run_repository.list_events(run_id)
+
+    def list_runs(self, limit: int = 30) -> list[AgentRunSummary]:
+        summaries: list[AgentRunSummary] = []
+        for run in self.run_repository.list_runs(limit):
+            try:
+                state = self.trip_repository.load_latest_state(run.trip_id)
+            except Exception:  # noqa: BLE001 - 손상된 스냅샷은 목록에서 건너뛴다
+                continue
+            message = (state.raw_user_message or "").strip().replace("\n", " ")
+            brief = state.brief
+            date_range = None
+            if brief and brief.start_date:
+                date_range = brief.start_date.isoformat()
+                if brief.end_date:
+                    date_range = f"{date_range} ~ {brief.end_date.isoformat()}"
+            summaries.append(
+                AgentRunSummary(
+                    run_id=run.run_id,
+                    trip_id=run.trip_id,
+                    status=run.status,
+                    created_at=run.started_at,
+                    message=message[:140],
+                    destination=state.selected_destination,
+                    date_range=date_range,
+                )
+            )
+        return summaries
 
     def _build_context(self, run_id: str, state: TripPlanState) -> RunContext:
         event_bus = EventBus(self.run_repository, run_id=run_id, trip_id=state.trip_id)

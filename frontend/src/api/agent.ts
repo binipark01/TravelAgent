@@ -5,10 +5,15 @@ import type {
   AgentRunDetailResponse,
   AgentRunMessageRequest,
   AgentRunResponse,
+  AgentRunSummary,
 } from '../types/agent'
 
 export function createAgentRun(payload: AgentRunCreateRequest): Promise<AgentRunResponse> {
   return apiRequest<AgentRunResponse>('/agent/runs', { method: 'POST', body: payload })
+}
+
+export function listAgentRuns(limit = 30): Promise<AgentRunSummary[]> {
+  return apiRequest<AgentRunSummary[]>(`/agent/runs?limit=${limit}`)
 }
 
 export function getAgentRun(runId: string): Promise<AgentRunDetailResponse> {

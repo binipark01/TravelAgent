@@ -1780,6 +1780,50 @@ legend {
   white-space: nowrap;
 }
 
+.saved-trip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.saved-trip-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.back-link {
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.ghost-button {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-weight: 600;
+  color: var(--text, #1f2937);
+  cursor: pointer;
+}
+
+.saved-trip-body h1 {
+  margin: 0 0 4px;
+}
+
+@media print {
+  .banner,
+  .agent-session-panel,
+  .agent-inspector-panel,
+  .chat-composer-bar,
+  .saved-trip-actions,
+  .back-link {
+    display: none !important;
+  }
+}
+
 .source-row-header {
   align-items: start;
   display: flex;

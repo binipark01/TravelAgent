@@ -10,6 +10,7 @@ from travel_agent.app.schemas.agent import (
     AgentRunDetailResponse,
     AgentRunMessageRequest,
     AgentRunResponse,
+    AgentRunSummary,
 )
 
 
@@ -31,6 +32,9 @@ class AgentService:
 
     def get_run(self, run_id: str) -> AgentRunDetailResponse:
         return self.runtime.get_run(run_id)
+
+    def list_runs(self, limit: int = 30) -> list[AgentRunSummary]:
+        return self.runtime.list_runs(limit)
 
     def add_message(self, run_id: str, request: AgentRunMessageRequest) -> AgentRunDetailResponse:
         return self.runtime.continue_run(run_id, request.message)

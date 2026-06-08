@@ -130,3 +130,15 @@ class AgentRunDetailResponse(StrictBaseModel):
     events: list[AgentEvent]
     state_summary: TripStateSummary
     state: TripPlanState
+
+
+class AgentRunSummary(StrictBaseModel):
+    """저장된 실행 목록('내 여행')용 요약."""
+
+    run_id: str
+    trip_id: str
+    status: AgentRunStatus
+    created_at: datetime
+    message: str
+    destination: str | None = None
+    date_range: str | None = None

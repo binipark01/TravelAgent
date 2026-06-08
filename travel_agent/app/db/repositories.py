@@ -56,6 +56,12 @@ class AgentRunRepository:
         model = self._get_run_model(run_id)
         return self._to_run(model)
 
+    def list_runs(self, limit: int = 30) -> list[AgentRun]:
+        stmt = (
+            select(AgentRunModel).order_by(AgentRunModel.started_at.desc()).limit(limit)
+        )
+        return [self._to_run(model) for model in self.session.execute(stmt).scalars()]
+
     def update_run(
         self,
         run_id: str,

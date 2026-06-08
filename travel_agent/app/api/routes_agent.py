@@ -10,6 +10,7 @@ from travel_agent.app.schemas.agent import (
     AgentRunDetailResponse,
     AgentRunMessageRequest,
     AgentRunResponse,
+    AgentRunSummary,
 )
 from travel_agent.app.services.agent_service import AgentService
 
@@ -21,6 +22,11 @@ def create_agent_run(
     request: AgentRunCreateRequest, db: Session = Depends(get_db)
 ) -> AgentRunResponse:
     return AgentService(db).create_run(request)
+
+
+@router.get("", response_model=list[AgentRunSummary])
+def list_agent_runs(limit: int = 30, db: Session = Depends(get_db)) -> list[AgentRunSummary]:
+    return AgentService(db).list_runs(limit)
 
 
 @router.get("/{run_id}", response_model=AgentRunDetailResponse)

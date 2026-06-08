@@ -1,22 +1,35 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { listAgentRuns } from '../api/agent'
 import { EmptyState } from '../components/EmptyState'
+import { ErrorState } from '../components/ErrorState'
+import { errorMessage } from '../utils/errors'
 import { formatDateTime } from '../utils/format'
-import { getRecentTrips } from '../utils/recentTrips'
 
 export function RecentTripsPage() {
-  const trips = getRecentTrips()
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['agent-runs'],
+    queryFn: () => listAgentRuns(40),
+  })
 
   return (
     <section className="card">
-      <h1>최근 여행</h1>
-      {trips.length === 0 ? (
-        <EmptyState message="최근 작업한 여행이 없습니다." />
-      ) : (
+      <h1>내 여행</h1>
+      {isLoading && <p className="empty-panel-text">불러오는 중…</p>}
+      {error && <ErrorState message={errorMessage(error)} />}
+      {data && data.length === 0 && <EmptyState message="저장된 여행이 없습니다." />}
+      {data && data.length > 0 && (
         <div className="option-list">
-          {trips.map((trip) => (
-            <Link className="recent-trip-row" to={`/trips/${trip.tripId}`} key={trip.tripId}>
-              <strong>{trip.title}</strong>
-              <span>{formatDateTime(trip.updatedAt)}</span>
+          {data.map((run) => (
+            <Link className="recent-trip-row" to={`/runs/${run.run_id}`} key={run.run_id}>
+              <div>
+                <strong>
+                  {run.destination ?? '여행'}
+                  {run.date_range ? ` · ${run.date_range}` : ''}
+                </strong>
+                <p className="recent-request-text">{run.message}</p>
+              </div>
+              <span>{formatDateTime(run.created_at)}</span>
             </Link>
           ))}
         </div>
