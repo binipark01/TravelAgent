@@ -37,6 +37,7 @@ def extract_live_flight_options(
     timeout_seconds: int = 40,
     limit: int = 5,
     max_date_searches: int = 6,
+    request_text: str | None = None,
 ) -> list[FlightOption]:
     """유연 날짜 범위(window) 안의 출발일을 전부 검색한 뒤 좋은 후보를 추려서 정리한다.
 
@@ -53,7 +54,7 @@ def extract_live_flight_options(
     if not nights or nights < 1:
         nights = 4
 
-    window_start, window_end = _search_window(brief, nights)
+    window_start, window_end = _search_window(brief, nights, request_text)
     departures = _candidate_departures(window_start, window_end, nights, max_date_searches)
     per_search_limit = max(limit, 5)
 
@@ -98,10 +99,18 @@ def extract_live_flight_options(
                 options.append(option)
 
     options = _dedupe(options)
-    return _curate(options, brief, limit)
+    return _curate(
+        options,
+        brief,
+        limit,
+        direct_only=_direct_requested(request_text),
+        flight_cap=_flight_price_cap(request_text),
+    )
 
 
-def _search_window(brief: TripBrief, nights: int) -> tuple[date, date | None]:
+def _search_window(
+    brief: TripBrief, nights: int, request_text: str | None = None
+) -> tuple[date, date | None]:
     """검색할 날짜 윈도우(start, end)를 정한다.
 
     사용자가 정확한 날짜를 안 주고 일정이 유연하면(flexible_dates) 출발일이 한 날짜로
@@ -112,10 +121,58 @@ def _search_window(brief: TripBrief, nights: int) -> tuple[date, date | None]:
     end = brief.end_date
     span = (end - start).days if end else 0
     if brief.flexible_dates and span <= nights:
-        # 사용자가 정한 출발일보다 더 일찍은 검색하지 않는다.
-        # ("6일 이후/부터" 같은 하한 의도 존중) 출발일은 그대로 두고 앞으로만 펼친다.
+        # 제약 방향을 보고 펼친다.
+        #  - "10일 이전/까지"(상한): 정한 날짜 이후로 안 가게 뒤로 펼친다.
+        #  - "6일 이후/부터"(하한) 또는 모호: 정한 날짜 이전으로 안 가게 앞으로 펼친다.
+        if _constraint_direction(request_text) == "before":
+            start = start - timedelta(days=6)
         end = start + timedelta(days=6 + nights)
     return start, end
+
+
+def _is_direct(option: FlightOption) -> bool:
+    return any("경유: 직항" in note for note in option.notes)
+
+
+def _direct_requested(text: str | None) -> bool:
+    """'직항만/직항으로' 같은 직항 요청 감지(경유 무관 표현은 제외)."""
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(k in lowered for k in ("경유 상관", "경유도", "경유 무관", "경유 괜찮")):
+        return False
+    return any(k in lowered for k in ("직항", "직행", "nonstop", "non-stop", "direct"))
+
+
+def _flight_price_cap(text: str | None) -> int | None:
+    """'항공권 40만원 이내' 같은 항공 예산 상한을 원 단위로 돌려준다(없으면 None)."""
+    if not text:
+        return None
+    lowered = text.lower()
+    if not any(k in lowered for k in ("항공", "비행기", "flight")):
+        return None
+    if not any(k in lowered for k in ("이내", "이하", "under", "밑", "안쪽")):
+        return None
+    match = re.search(r"(\d+)\s*만", text)
+    return int(match.group(1)) * 10000 if match else None
+
+
+def _constraint_direction(text: str | None) -> str | None:
+    """요청 문구에서 날짜 제약 방향을 알아낸다. 'before'(이전/까지) / 'after'(이후/부터) / None."""
+    if not text:
+        return None
+    lowered = text.lower()
+    after_kw = ("이후", "부터", "이상", "넘어", " after", " from ")
+    before_kw = ("이전", "까지", "전에", "이내", "안에", " before", " by ")
+    has_after = any(k in lowered for k in after_kw)
+    has_before = any(k in lowered for k in before_kw)
+    if has_after and has_before:
+        return None  # 범위 표현은 윈도우가 처리하므로 한쪽으로 펼치지 않는다
+    if has_before:
+        return "before"
+    if has_after:
+        return "after"
+    return None
 
 
 def _candidate_departures(
@@ -144,14 +201,35 @@ def _candidate_departures(
     return picked
 
 
-def _curate(options: list[FlightOption], brief: TripBrief, limit: int) -> list[FlightOption]:
+def _curate(
+    options: list[FlightOption],
+    brief: TripBrief,
+    limit: int,
+    *,
+    direct_only: bool = False,
+    flight_cap: int | None = None,
+) -> list[FlightOption]:
     """검색한 후보를 요청 조건·가격·날짜·소스 다양성을 함께 보고 추려서 정리한다.
 
-    날짜가 한쪽으로 쏠리지 않게 **출발일별 대표 1개씩** 고르고, 소스(네이버·구글)가
-    한쪽만 나오지 않게 **소스별로 번갈아** 담는다. 추천 이유는 notes 맨 앞에 붙인다.
+    직항만/항공 예산 같은 명시 조건을 먼저 거른 뒤, 날짜가 한쪽으로 쏠리지 않게
+    **출발일별 대표 1개씩** 고르고, 소스(네이버·구글)가 한쪽만 나오지 않게 **번갈아**
+    담는다. 추천 이유는 notes 맨 앞에 붙인다.
     """
     if not options:
         return []
+    # 직항만/항공 예산 필터(요청 시). 조건 만족 후보가 없으면 원래 풀을 유지한다.
+    over_budget_only = False
+    if direct_only:
+        direct = [option for option in options if _is_direct(option)]
+        if direct:
+            options = direct
+    if flight_cap:
+        within = [option for option in options if (option.price.amount or 0) <= flight_cap]
+        if within:
+            options = within
+        else:
+            over_budget_only = True
+
     # 선호 시간대는 한글/영어 둘 다 인식한다. LLM이 transport_preference나 must_include에
     # "삿포로행 오전 출발, 인천행 오후 출발"처럼 자연어로 넣을 수 있다.
     pref = " ".join([brief.transport_preference or "", *brief.must_include]).lower()
@@ -183,6 +261,10 @@ def _curate(options: list[FlightOption], brief: TripBrief, limit: int) -> list[F
         tags: list[str] = []
         if option is cheapest:
             tags.append("💰 추천 중 최저가")
+            if over_budget_only and flight_cap:
+                tags.append(f"⚠️ {flight_cap // 10000}만원 이내 항공편이 없어 최저가 표시")
+        if direct_only and _is_direct(option):
+            tags.append("직항")
         if want_morning and option.departure_time.hour < 12:
             tags.append("오전 출발")
         if (

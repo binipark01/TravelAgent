@@ -29,7 +29,10 @@ class FlightAgent:
             if state.selected_destination and not brief.selected_destination:
                 brief.selected_destination = state.selected_destination
             state.transport_options = extract_live_flight_options(
-                brief, currency=state.currency, timeout_seconds=self.live_timeout
+                brief,
+                currency=state.currency,
+                timeout_seconds=self.live_timeout,
+                request_text=state.raw_user_message,
             )
             return state
 

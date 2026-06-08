@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from travel_agent.app.agents.flight_live_search import (
     _candidate_departures,
+    _constraint_direction,
     _curate,
     _search_window,
     flight_candidate_to_option,
@@ -154,6 +155,34 @@ def test_search_window_expands_for_flexible_dates() -> None:
     assert all(departure >= date(2026, 7, 7) for departure in deps)
 
 
+def test_constraint_direction() -> None:
+    assert _constraint_direction("6일 이후 출발로 찾아줘") == "after"
+    assert _constraint_direction("10일 이전 출발로 찾아줘") == "before"
+    assert _constraint_direction("8월 초 항공권") is None
+    assert _constraint_direction(None) is None
+    # 범위 표현(이후+이전 둘 다)은 한쪽으로 펼치지 않는다.
+    assert _constraint_direction("5일 이후 10일 이전") is None
+
+
+def test_search_window_before_expands_backward() -> None:
+    brief = TripBrief(
+        origin="ICN",
+        destinations=["Sapporo"],
+        start_date=date(2026, 7, 9),
+        end_date=date(2026, 7, 13),
+        duration_nights=4,
+        flexible_dates=True,
+        currency="KRW",
+    )
+
+    start, end = _search_window(brief, 4, "10일 이전 출발로 찾아줘")
+    deps = _candidate_departures(start, end, 4, 9)
+
+    # 상한 제약: 정한 날짜(7/9) 이후로는 검색하지 않는다.
+    assert all(departure <= date(2026, 7, 9) for departure in deps)
+    assert deps[-1] == date(2026, 7, 9)
+
+
 def test_search_window_keeps_exact_dates() -> None:
     brief = TripBrief(
         origin="ICN",
@@ -171,6 +200,64 @@ def test_search_window_keeps_exact_dates() -> None:
     # 정확한 날짜를 준 경우 단일 날짜만 검색한다.
     assert (start, end) == (date(2026, 9, 20), date(2026, 9, 23))
     assert deps == [date(2026, 9, 20)]
+
+
+def test_direct_and_flight_budget_detection() -> None:
+    from travel_agent.app.agents.flight_live_search import _direct_requested, _flight_price_cap
+
+    assert _direct_requested("직항으로만 찾아줘") is True
+    assert _direct_requested("경유 상관없어") is False
+    assert _direct_requested("삿포로 항공권 찾아줘") is False
+    assert _flight_price_cap("항공권 40만원 이내로") == 400_000
+    assert _flight_price_cap("숙소 20만원 이내") is None  # 항공 키워드 없음
+    assert _flight_price_cap("항공권 추천해줘") is None  # 상한 표현 없음
+
+
+def _conn_option(outbound: str, price: str) -> object:
+    brief = TripBrief(
+        origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 7), travelers=1, currency="KRW",
+    )
+    links = build_flight_search_links(brief)
+    candidate = FlightFareCandidate(
+        provider="naver_flight", airline="경유항공",
+        outbound_departure=outbound, outbound_arrival="20:00 CTS",
+        inbound_departure="12:00 CTS", inbound_arrival="18:00 ICN",
+        outbound_duration="경유 1, 09시간", inbound_duration="직항",
+        price=price, stops="경유 포함", source_url=links.naver_url, notes=[],
+    )
+    option = flight_candidate_to_option(candidate, links, "KRW")
+    assert option is not None
+    return option
+
+
+def test_curate_direct_only_filters_connections() -> None:
+    brief = TripBrief(
+        origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    direct = _option("09:00 ICN", "13:00 CTS", "왕복 600,000원")  # stops=직항
+    conn = _conn_option("10:00 ICN", "왕복 500,000원")  # stops=경유 포함
+
+    curated = _curate([conn, direct], brief, 5, direct_only=True)
+
+    assert direct in curated
+    assert conn not in curated
+    assert all(any("경유: 직항" in n for n in o.notes) for o in curated)
+
+
+def test_curate_flight_cap_filters_over_budget() -> None:
+    brief = TripBrief(
+        origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    cheap = _option("09:00 ICN", "13:00 CTS", "왕복 450,000원")
+    pricey = _option("08:00 ICN", "13:00 CTS", "왕복 600,000원")
+
+    curated = _curate([pricey, cheap], brief, 5, flight_cap=500_000)
+
+    assert all((o.price.amount or 0) <= 500_000 for o in curated)
+    assert cheap in curated
 
 
 def test_candidate_departures_spreads_across_flexible_window() -> None:
