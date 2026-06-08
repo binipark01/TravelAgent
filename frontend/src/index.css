@@ -1773,6 +1773,13 @@ legend {
   padding: 2px 9px;
 }
 
+.day-weather {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .source-row-header {
   align-items: start;
   display: flex;

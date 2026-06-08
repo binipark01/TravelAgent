@@ -18,6 +18,7 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
             {formatDate(day.date)} {day.area ? `· ${day.area}` : ''}
           </p>
         </div>
+        {day.weather && <span className="day-weather">{cleanDisplayText(day.weather)}</span>}
       </header>
       <div className="timeline">
         {day.items.map((item) => (

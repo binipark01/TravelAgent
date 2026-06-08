@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from math import ceil
 
+from travel_agent.app.connectors.weather.open_meteo import fetch_trip_weather
 from travel_agent.app.providers.base import RoutesProvider
 from travel_agent.app.schemas.common import Money
 from travel_agent.app.schemas.itinerary import (
@@ -64,9 +65,23 @@ class RouteAgent:
             if day.day == days_count and days_count > 1:
                 day.notes.append("출국일 — 공항 도착 2-3시간 전 버퍼가 필요합니다.")
 
+        self._attach_weather(itinerary, state, brief, days_count)
         state.draft_itinerary = itinerary
         state.optimized_itinerary = itinerary
         return state
+
+    def _attach_weather(self, itinerary, state, brief, days_count: int) -> None:
+        """여행 날짜별 날씨를 일정 각 날짜에 붙인다(실패해도 일정은 그대로)."""
+        if not state.selected_destination or not brief.start_date:
+            return
+        end = brief.end_date or (brief.start_date + timedelta(days=days_count - 1))
+        try:
+            weather = fetch_trip_weather(state.selected_destination, brief.start_date, end)
+        except (OSError, ValueError):
+            return
+        for day in itinerary.days:
+            if day.date and day.date in weather:
+                day.weather = weather[day.date]
 
     def _order_pois_by_area(self, pois: list[POIOption]) -> list[POIOption]:
         grouped: dict[str, list[POIOption]] = defaultdict(list)

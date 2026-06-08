@@ -58,6 +58,7 @@ class DayPlan(StrictBaseModel):
     day: int
     date: date_cls | None = None
     area: str | None = None
+    weather: str | None = None
     items: list[ItineraryItem] = Field(default_factory=list)
     meals: list[MealSuggestion] = Field(default_factory=list)
     transfers: list[TransferSegment] = Field(default_factory=list)

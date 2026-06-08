@@ -50,6 +50,7 @@ export interface DayPlan {
   day: number
   date?: string | null
   area?: string | null
+  weather?: string | null
   items: ItineraryItem[]
   meals: MealSuggestion[]
   transfers: TransferSegment[]
