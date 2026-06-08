@@ -20,23 +20,19 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
               <div className="option-card-header">
                 <h3>{cleanDisplayText(option.name)}</h3>
                 <div className="option-badges">
+                  <span className="small-badge">{hotelSourceLabel(option.metadata.provider_name)}</span>
                   <span
                     className={`small-badge source-kind-${option.metadata.source_ref.is_mock ? 'mock' : 'live'}`}
                   >
                     {option.metadata.source_ref.is_mock ? 'mock' : 'live'}
                   </span>
-                  {option.rating && <span className="small-badge">{option.rating.toFixed(1)}</span>}
+                  {option.rating && <span className="small-badge">★ {option.rating.toFixed(1)}</span>}
                 </div>
               </div>
               <p>
                 {cleanDisplayText(option.location.name)}
                 {option.location.area ? ` · ${cleanDisplayText(option.location.area)}` : ''}
-              </p>
-              <p>
-                {cleanDisplayText(option.metadata.provider_name)}
-                {option.metadata.source_ref.source_type
-                  ? ` · ${cleanDisplayText(option.metadata.source_ref.source_type)}`
-                  : ''}
+                {` · 출처: ${hotelSourceLabel(option.metadata.provider_name)}`}
               </p>
               <p>1박 {formatMoney(option.nightly_price)}</p>
               <strong>총 {formatMoney(option.total_price)}</strong>
@@ -59,4 +55,11 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
 function cleanCancellationPolicy(policy: string): string {
   if (/simulated/i.test(policy)) return '체크인 48시간 전까지 취소 조건 확인 필요'
   return cleanDisplayText(policy)
+}
+
+/** provider_name(naver_hotel/google_hotel)을 읽기 쉬운 출처명으로 바꾼다. */
+function hotelSourceLabel(provider: string): string {
+  if (provider === 'naver_hotel') return '네이버'
+  if (provider === 'google_hotel') return '구글'
+  return cleanDisplayText(provider)
 }

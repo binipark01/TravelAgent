@@ -42,3 +42,17 @@ def test_double_only_hotel_does_not_match_twin() -> None:
     rooms = parse_rooms(DOUBLE_ONLY_TEXT)
     assert match_room(rooms, "twin") is None
     assert match_room(rooms, "double") is not None
+
+
+def test_parse_rooms_detects_ota() -> None:
+    text = (
+        "트윈룸 싱글 침대 2개 부킹닷컴 ₩201,000 사이트 방문 "
+        "더블룸 더블 사이즈 침대 1개 아고다 ₩222,348"
+    )
+    rooms = parse_rooms(text)
+
+    assert rooms[0]["ota"] == "부킹닷컴"
+    assert rooms[1]["ota"] == "아고다"
+    twin = match_room(rooms, "twin")
+    assert twin is not None
+    assert twin["ota"] == "부킹닷컴"

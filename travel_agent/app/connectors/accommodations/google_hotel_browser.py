@@ -90,6 +90,28 @@ _KIND_PATTERNS = {
     "twin": re.compile(r"트윈|twin|트인|침대\s*2\s*개|싱글\s*침대\s*2"),
     "double": re.compile(r"더블|double|퀸|킹|queen|king"),
 }
+# 가격 옆에 표시되는 예약처(OTA) 이름. 가격 앞 구간에서 가장 가까운 것을 잡는다.
+_OTA_PATTERNS = [
+    ("부킹닷컴", re.compile(r"booking\.?com|부킹")),
+    ("아고다", re.compile(r"agoda|아고다")),
+    ("익스피디아", re.compile(r"expedia|익스피디아")),
+    ("Hotels.com", re.compile(r"hotels\.?com|호텔스닷컴")),
+    ("트립닷컴", re.compile(r"trip\.?com|트립닷컴|ctrip")),
+    ("호텔 공식", re.compile(r"호텔\s*웹사이트|공식\s*사이트|official")),
+]
+
+
+def _detect_ota(window: str) -> str | None:
+    # 가격에 가장 가까운(=윈도우에서 가장 오른쪽) OTA를 고른다.
+    lowered = window.lower()
+    best_name: str | None = None
+    best_pos = -1
+    for name, pattern in _OTA_PATTERNS:
+        matches = list(pattern.finditer(lowered))
+        if matches and matches[-1].start() > best_pos:
+            best_pos = matches[-1].start()
+            best_name = name
+    return best_name
 
 
 def detect_bed_preference(text: str | None) -> str | None:
@@ -113,10 +135,12 @@ def parse_rooms(text: str) -> list[dict[str, Any]]:
     rooms: list[dict[str, Any]] = []
     for match in _PRICE_RE.finditer(text):
         price = int(match.group(1).replace(",", ""))
-        # 가격 바로 앞 짧은 구간만 본다(인접 객실 텍스트가 섞이지 않게).
-        window = re.sub(r"\s+", " ", text[max(0, match.start() - 30) : match.start()]).strip()
-        if window:
-            rooms.append({"desc": window, "price": price})
+        # 침대 매칭은 가격 바로 앞 짧은 구간만(인접 객실 텍스트 오염 방지),
+        # OTA 이름은 조금 더 넓게 본다(예약처가 보통 가격 앞에 적힘).
+        desc = re.sub(r"\s+", " ", text[max(0, match.start() - 30) : match.start()]).strip()
+        ota = _detect_ota(text[max(0, match.start() - 55) : match.start()])
+        if desc:
+            rooms.append({"desc": desc, "price": price, "ota": ota})
     return rooms
 
 
@@ -192,7 +216,9 @@ def annotate_room_availability(
     for option, rooms in zip(targets, rooms_per_hotel, strict=False):
         room = match_room(rooms, kind) if rooms else None
         if room:
-            option.notes.insert(0, f"🛏 {label} 확인 (예약가 ₩{room['price']:,}~)")
+            ota = room.get("ota")
+            ota_text = f" ({ota} 최저)" if ota else ""
+            option.notes.insert(0, f"🛏 {label} 확인 · ₩{room['price']:,}~{ota_text}")
             confirmed.append(option)
         else:
             if rooms:
