@@ -72,6 +72,9 @@ class GoogleHotelBrowserExtractor:
                     "name": name,
                     "amount": int(amount),
                     "rating": hotel.get("rating"),
+                    "star": hotel.get("star"),
+                    "reviews": hotel.get("reviews"),
+                    "amenities": hotel.get("amenities") or [],
                     "source_url": final_url,
                 }
             )

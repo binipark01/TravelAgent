@@ -51,6 +51,9 @@ export interface AccommodationOption {
   nightly_price: Money
   total_price: Money
   rating?: number | null
+  star_rating?: number | null
+  review_count?: number | null
+  amenities?: string[]
   cancellation_policy: string
   metadata: ProviderMetadata
   notes: string[]

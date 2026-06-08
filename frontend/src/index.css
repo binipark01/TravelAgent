@@ -1757,6 +1757,22 @@ legend {
   text-decoration: underline;
 }
 
+.amenity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.amenity-chip {
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
 .source-row-header {
   align-items: start;
   display: flex;

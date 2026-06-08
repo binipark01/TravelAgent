@@ -308,7 +308,11 @@ def hotel_to_option(
     notes = [f"{label} 실시간 추출 · 예약 전 가격/날짜 재확인 필요"]
     if raw_rating:
         scale = 10 if provider == "naver_hotel" else 5
-        notes.append(f"{label} 평점 {raw_rating}/{scale}")
+        reviews = hotel.get("reviews")
+        review_text = f", 리뷰 {int(reviews):,}" if reviews else ""
+        notes.append(f"{label} 평점 {raw_rating}/{scale}{review_text}")
+    star = hotel.get("star")
+    amenities = [str(item) for item in (hotel.get("amenities") or []) if item]
     return AccommodationOption(
         option_id=new_id("acc"),
         name=hotel["name"],
@@ -316,6 +320,9 @@ def hotel_to_option(
         nightly_price=Money(amount=nightly, currency=currency),
         total_price=Money(amount=nightly * max(nights, 1), currency=currency),
         rating=rating,
+        star_rating=int(star) if star else None,
+        review_count=int(hotel["reviews"]) if hotel.get("reviews") else None,
+        amenities=amenities,
         cancellation_policy=f"{label} 기준 표시가. 예약 사이트에서 취소 규정 확인 필요.",
         metadata=_live_metadata(hotel["source_url"], provider),
         notes=notes,

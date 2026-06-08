@@ -68,6 +68,14 @@ try {
     const out = []
     const seen = new Set()
     const re = /^최저가\s*₩([\d,]+),\s*(.+)$/
+    const parseReviews = (s) => {
+      const m = s.match(/\(([\d.]+)\s*(천|만)?\)/)
+      if (!m) return null
+      let n = parseFloat(m[1])
+      if (m[2] === '천') n *= 1000
+      if (m[2] === '만') n *= 10000
+      return Math.round(n)
+    }
     for (const el of document.querySelectorAll('[aria-label]')) {
       const label = (el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim()
       const m = re.exec(label)
@@ -75,19 +83,35 @@ try {
       const name = m[2].split(/\s(?:파격|일반적인|할인|특가)/)[0].trim()
       if (!name || seen.has(name)) continue
       seen.add(name)
-      // 평점: 카드 상위 컨테이너의 텍스트에서 X.X 패턴을 찾는다.
+      // 카드 컨테이너 텍스트에서 평점·리뷰수·성급·편의시설을 함께 뽑는다.
       let node = el
-      let rating = null
-      for (let i = 0; i < 6 && node; i++) {
+      let txt = ''
+      for (let i = 0; i < 7 && node; i++) {
         node = node.parentElement
-        if (!node) break
-        const rm = (node.innerText || '').match(/(\d\.\d)\s*(?:\/\s*5|\()/)
-        if (rm) {
-          rating = parseFloat(rm[1])
+        if (node && /성급|\(\d/.test(node.innerText || '')) {
+          txt = (node.innerText || '').replace(/\s+/g, ' ')
           break
         }
       }
-      out.push({ name, amount: parseInt(m[1].replace(/,/g, ''), 10), rating })
+      const ratingM = txt.match(/(\d\.\d)\s*(?:\/\s*5|\()/)
+      const starM = txt.match(/(\d)\s*성급/)
+      let amenities = []
+      const am = txt.match(/편의시설:\s*([^]+?)(?:,?\s*\d\s*성급|$)/)
+      if (am) {
+        amenities = am[1]
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s && !/성급/.test(s))
+          .slice(0, 6)
+      }
+      out.push({
+        name,
+        amount: parseInt(m[1].replace(/,/g, ''), 10),
+        rating: ratingM ? parseFloat(ratingM[1]) : null,
+        reviews: parseReviews(txt),
+        star: starM ? parseInt(starM[1], 10) : null,
+        amenities,
+      })
       if (out.length >= max) break
     }
     return out

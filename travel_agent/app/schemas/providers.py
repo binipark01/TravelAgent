@@ -59,6 +59,9 @@ class AccommodationOption(StrictBaseModel):
     nightly_price: Money
     total_price: Money
     rating: float | None = None
+    star_rating: int | None = None
+    review_count: int | None = None
+    amenities: list[str] = Field(default_factory=list)
     cancellation_policy: str = "Mock flexible policy; verify before booking."
     metadata: ProviderMetadata
     notes: list[str] = Field(default_factory=list)

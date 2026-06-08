@@ -126,6 +126,39 @@ def test_curate_hotels_filters_budget_and_sorts() -> None:
     )
 
 
+def test_hotel_to_option_enriched_detail() -> None:
+    google = hotel_to_option(
+        {
+            "name": "베셀호텔",
+            "amount": 153_073,
+            "rating": 4.5,
+            "star": 4,
+            "reviews": 2100,
+            "amenities": ["무료 Wi-Fi", "온천", "주차"],
+            "source_url": "https://g",
+        },
+        "Sapporo",
+        2,
+        "KRW",
+        provider="google_hotel",
+    )
+    assert google.star_rating == 4
+    assert google.review_count == 2100
+    assert google.amenities == ["무료 Wi-Fi", "온천", "주차"]
+    assert any("리뷰 2,100" in note for note in google.notes)
+
+    # 네이버는 부가 정보가 없으면 비워 둔다.
+    naver = hotel_to_option(
+        {"name": "Y", "amount": 90_000, "rating": 9.0, "source_url": "u"},
+        "Sapporo",
+        2,
+        "KRW",
+        provider="naver_hotel",
+    )
+    assert naver.star_rating is None
+    assert naver.amenities == []
+
+
 def test_google_hotel_rating_not_halved() -> None:
     option = hotel_to_option(
         {"name": "Onsen Ryokan Yuen", "amount": 198_680, "rating": 4.3, "source_url": "https://g"},

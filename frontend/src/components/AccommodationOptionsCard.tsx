@@ -27,13 +27,25 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
                     {option.metadata.source_ref.is_mock ? 'mock' : 'live'}
                   </span>
                   {option.rating && <span className="small-badge">★ {option.rating.toFixed(1)}</span>}
+                  {option.star_rating && (
+                    <span className="small-badge">{option.star_rating}성급</span>
+                  )}
                 </div>
               </div>
               <p>
                 {cleanDisplayText(option.location.name)}
-                {option.location.area ? ` · ${cleanDisplayText(option.location.area)}` : ''}
+                {option.review_count ? ` · 리뷰 ${option.review_count.toLocaleString('ko-KR')}` : ''}
                 {` · 출처: ${hotelSourceLabel(option.metadata.provider_name)}`}
               </p>
+              {option.amenities && option.amenities.length > 0 && (
+                <div className="amenity-chips">
+                  {option.amenities.slice(0, 5).map((amenity) => (
+                    <span className="amenity-chip" key={`${option.option_id}-${amenity}`}>
+                      {cleanDisplayText(amenity)}
+                    </span>
+                  ))}
+                </div>
+              )}
               <p>1박 {formatMoney(option.nightly_price)}</p>
               <strong>총 {formatMoney(option.total_price)}</strong>
               <p className="fine-print">{cleanCancellationPolicy(option.cancellation_policy)}</p>
