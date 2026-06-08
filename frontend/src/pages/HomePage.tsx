@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Hotel, Plane, Plus, SearchCheck } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { createAgentRun } from '../api/agent'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
@@ -161,7 +161,7 @@ export function HomePage() {
                 {pending && (
                   <div className="assistant-message">
                     <Clock3 aria-hidden="true" />
-                    <p>요청을 분석하고 필요한 agent를 실행하는 중입니다.</p>
+                    <RunProgress />
                   </div>
                 )}
                 {turn.error && <ErrorState message={turn.error} />}
@@ -272,6 +272,37 @@ export function HomePage() {
           )}
         </section>
       </aside>
+    </div>
+  )
+}
+
+const RUN_STAGES = [
+  '요청을 분석하고 있어요',
+  '✈️ 항공권을 검색하고 있어요 (네이버·구글)',
+  '🏨 숙소를 찾고 있어요',
+  '🍴 맛집·관광지를 모으고 있어요',
+  '🗓 일정·예산을 정리하고 있어요',
+]
+
+function RunProgress() {
+  const [index, setIndex] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((prev) => Math.min(prev + 1, RUN_STAGES.length - 1))
+    }, 8000)
+    return () => clearInterval(timer)
+  }, [])
+  return (
+    <div className="run-progress">
+      {RUN_STAGES.map((stage, idx) => {
+        const status = idx < index ? 'done' : idx === index ? 'active' : 'todo'
+        return (
+          <div className={`run-progress-step ${status}`} key={stage}>
+            <span className="run-progress-dot" aria-hidden="true" />
+            <span>{stage}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

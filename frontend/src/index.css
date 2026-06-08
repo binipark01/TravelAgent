@@ -1813,6 +1813,58 @@ legend {
   margin: 0 0 4px;
 }
 
+.run-progress {
+  display: grid;
+  gap: 8px;
+}
+
+.run-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  color: var(--muted);
+  transition: color 0.3s ease;
+}
+
+.run-progress-step .run-progress-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.4);
+  flex: none;
+}
+
+.run-progress-step.done {
+  color: var(--text, #1f2937);
+}
+
+.run-progress-step.done .run-progress-dot {
+  background: #0f766e;
+}
+
+.run-progress-step.active {
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.run-progress-step.active .run-progress-dot {
+  background: #0f766e;
+  animation: run-progress-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes run-progress-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+}
+
 .plan-compare-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
