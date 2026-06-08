@@ -1813,6 +1813,54 @@ legend {
   margin: 0 0 4px;
 }
 
+.plan-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.plan-compare-col {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.plan-compare-col.best {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: rgba(15, 118, 110, 0.05);
+}
+
+.plan-compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.plan-compare-total {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 4px 0 8px;
+}
+
+.plan-compare-line {
+  margin: 3px 0;
+  font-size: 13px;
+}
+
+.plan-compare-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .plan-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media print {
   .banner,
   .agent-session-panel,

@@ -2,6 +2,7 @@ import type { TripPlanState } from '../types/trip'
 import { AccommodationOptionsCard } from './AccommodationOptionsCard'
 import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
+import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
 
@@ -27,6 +28,9 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
 
   return (
     <div className="assistant-detail-cards" style={{ display: 'grid', gap: 12 }}>
+      {flights.length >= 2 && hotels.length >= 2 && (
+        <PlanComparisonCard flights={flights} hotels={hotels} />
+      )}
       {flights.length > 0 && <TransportOptionsCard options={flights} />}
       {hotels.length > 0 && <AccommodationOptionsCard options={hotels} />}
       {activities.length > 0 && (
