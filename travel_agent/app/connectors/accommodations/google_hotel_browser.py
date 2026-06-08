@@ -7,13 +7,18 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
 
 from travel_agent.app.connectors.accommodations.naver_hotel_browser import build_hotel_query
+
+if TYPE_CHECKING:
+    from travel_agent.app.schemas.providers import AccommodationOption
 
 
 class GoogleHotelExtractionError(RuntimeError):
@@ -73,3 +78,124 @@ class GoogleHotelBrowserExtractor:
             if len(results) >= limit:
                 break
         return results
+
+
+# ── 객실/침대 타입 딥체크 ─────────────────────────────────────────────
+# 호텔명으로 구글 호텔 상세를 열면 "더블룸 더블 사이즈 침대 1개 ₩222,348"처럼
+# 객실 타입이 나온다. 사용자가 트윈/더블을 명시하면 상위 후보를 호텔별로 확인한다.
+
+_PRICE_RE = re.compile(r"₩([\d,]{4,})")
+_KIND_LABEL = {"twin": "트윈룸", "double": "더블룸"}
+_KIND_PATTERNS = {
+    "twin": re.compile(r"트윈|twin|트인|침대\s*2\s*개|싱글\s*침대\s*2"),
+    "double": re.compile(r"더블|double|퀸|킹|queen|king"),
+}
+
+
+def detect_bed_preference(text: str | None) -> str | None:
+    """선호 문구에서 침대 타입(twin/double)을 알아낸다. 없으면 None."""
+    if not text:
+        return None
+    lowered = text.lower()
+    if re.search(r"트윈|twin|트인|싱글\s*2|침대\s*2", lowered):
+        return "twin"
+    if re.search(r"더블|double|퀸|킹|queen|king", lowered):
+        return "double"
+    return None
+
+
+def build_hotel_detail_url(hotel_name: str) -> str:
+    return f"https://www.google.com/travel/search?q={quote_plus(hotel_name)}"
+
+
+def parse_rooms(text: str) -> list[dict[str, Any]]:
+    """상세 텍스트에서 (객실 설명, 가격) 목록을 뽑는다."""
+    rooms: list[dict[str, Any]] = []
+    for match in _PRICE_RE.finditer(text):
+        price = int(match.group(1).replace(",", ""))
+        # 가격 바로 앞 짧은 구간만 본다(인접 객실 텍스트가 섞이지 않게).
+        window = re.sub(r"\s+", " ", text[max(0, match.start() - 30) : match.start()]).strip()
+        if window:
+            rooms.append({"desc": window, "price": price})
+    return rooms
+
+
+def match_room(rooms: list[dict[str, Any]], kind: str) -> dict[str, Any] | None:
+    """요청한 침대 타입과 맞는 객실 중 가장 싼 것을 고른다."""
+    pattern = _KIND_PATTERNS.get(kind)
+    if pattern is None:
+        return None
+    candidates = [room for room in rooms if pattern.search(room["desc"].lower())]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda room: room["price"])
+
+
+def fetch_hotel_rooms(urls: list[str], *, timeout_seconds: int = 30) -> list[list[dict[str, Any]]]:
+    """여러 호텔 상세를 브라우저 하나로 열어 객실 목록을 입력 순서대로 돌려준다."""
+    if not urls:
+        return []
+    script_path = Path(__file__).with_name("google_hotel_rooms.mjs")
+    concurrency = 3
+    command = ["node", str(script_path), "--batch", str(timeout_seconds), str(concurrency)]
+    batches = math.ceil(len(urls) / concurrency)
+    total_timeout = timeout_seconds * batches + 15
+    try:
+        completed = subprocess.run(
+            command,
+            input="\n".join(urls),
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            text=True,
+            timeout=total_timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return [[] for _ in urls]
+    results: list[list[dict[str, Any]]] = []
+    for line in completed.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            results.append([])
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            results.append([])
+            continue
+        results.append(parse_rooms(item.get("text", "")))
+    while len(results) < len(urls):
+        results.append([])
+    return results
+
+
+def annotate_room_availability(
+    options: list[AccommodationOption],
+    *,
+    preference: str | None,
+    timeout_seconds: int = 30,
+    max_checks: int = 6,
+) -> list[AccommodationOption]:
+    """침대 선호(트윈/더블)가 있으면 상위 호텔을 딥체크해 객실 유무를 표시하고 정렬한다.
+
+    선호가 없으면 그대로 반환(빠른 경로 유지). 확인된 호텔을 앞으로 올린다.
+    """
+    kind = detect_bed_preference(preference)
+    if not kind or not options:
+        return options
+    targets = options[:max_checks]
+    urls = [build_hotel_detail_url(option.name) for option in targets]
+    rooms_per_hotel = fetch_hotel_rooms(urls, timeout_seconds=timeout_seconds)
+    label = _KIND_LABEL[kind]
+    confirmed: list[AccommodationOption] = []
+    others: list[AccommodationOption] = []
+    for option, rooms in zip(targets, rooms_per_hotel, strict=False):
+        room = match_room(rooms, kind) if rooms else None
+        if room:
+            option.notes.insert(0, f"🛏 {label} 확인 (예약가 ₩{room['price']:,}~)")
+            confirmed.append(option)
+        else:
+            if rooms:
+                option.notes.insert(0, f"🛏 {label} 미확인 — 예약 시 객실 타입 확인")
+            others.append(option)
+    return confirmed + others + options[max_checks:]

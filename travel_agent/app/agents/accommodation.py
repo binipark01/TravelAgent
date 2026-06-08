@@ -64,6 +64,7 @@ class AccommodationAgent:
                 currency=state.currency,
                 timeout_seconds=self.live_timeout,
                 max_nightly_price=_nightly_budget(brief),
+                room_preference=brief.accommodation_preference,
             )
             return state
 

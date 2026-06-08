@@ -141,10 +141,13 @@ def extract_live_accommodation_options(
     timeout_seconds: int = 35,
     limit: int = 8,
     max_nightly_price: int | None = None,
+    room_preference: str | None = None,
 ) -> list[AccommodationOption]:
     """네이버+구글 호텔 검색을 합쳐 실제 숙소만 추려서 정리한다(mock 미사용).
 
     브라우저 콜드스타트를 줄이려 두 소스를 순차로(한 번에 한 Chrome) 호출한다.
+    room_preference(트윈/더블 등)가 있으면 상위 후보를 호텔별로 딥체크해 객실 유무를
+    확인·표시한다.
     """
     options: list[AccommodationOption] = []
 
@@ -175,7 +178,21 @@ def extract_live_accommodation_options(
     except GoogleHotelExtractionError:
         pass
 
-    return _curate_hotels(options, max_nightly_price=max_nightly_price, limit=limit)
+    curated = _curate_hotels(options, max_nightly_price=max_nightly_price, limit=limit)
+
+    # 침대 선호(트윈/더블)가 있으면 상위 후보를 호텔별로 딥체크해 객실 유무를 표시한다.
+    if room_preference:
+        try:
+            from travel_agent.app.connectors.accommodations.google_hotel_browser import (
+                annotate_room_availability,
+            )
+
+            curated = annotate_room_availability(
+                curated, preference=room_preference, timeout_seconds=timeout_seconds
+            )
+        except (OSError, RuntimeError, ValueError):
+            pass
+    return curated
 
 
 def _curate_hotels(
