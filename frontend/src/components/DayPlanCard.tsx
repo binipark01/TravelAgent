@@ -31,8 +31,10 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
             <div>
               <strong>{cleanDisplayText(meal.title)}</strong>
               <p>
-                {cleanDisplayText(meal.area)} · 식사 · {formatMoney(meal.estimated_cost)}
+                {mealTypeLabel(meal.meal_type)}
+                {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
               </p>
+              {meal.notes[0] && <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>}
             </div>
           </div>
         ))}
@@ -74,6 +76,13 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
   )
 }
 
+function mealTypeLabel(mealType: string): string {
+  if (mealType === 'lunch') return '점심'
+  if (mealType === 'dinner') return '저녁'
+  if (mealType === 'breakfast') return '아침'
+  return '식사'
+}
+
 export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
   return (
     <div className="timeline-row" key={item.item_id}>
@@ -83,8 +92,9 @@ export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
       <div>
         <strong>{cleanDisplayText(item.title)}</strong>
         <p>
-          {cleanDisplayText(item.location.area ?? item.location.name)} · {activityTypeLabel(item.type)} ·{' '}
-          {formatMoney(item.estimated_cost)}
+          {cleanDisplayText(item.location.area ?? item.location.name)} ·{' '}
+          {activityTypeLabel(item.type)}
+          {item.estimated_cost.amount > 0 ? ` · ${formatMoney(item.estimated_cost)}` : ''}
         </p>
         {item.booking_required && <span className="small-badge">예약 확인 필요</span>}
       </div>

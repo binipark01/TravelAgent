@@ -44,6 +44,16 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
                   ))}
                 </ul>
               )}
+              {option.metadata.source_ref.source_url && (
+                <a
+                  className="option-link"
+                  href={option.metadata.source_ref.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  예약 페이지에서 확인 ↗
+                </a>
+              )}
             </article>
           ))}
         </div>

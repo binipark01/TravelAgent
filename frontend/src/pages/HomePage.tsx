@@ -6,6 +6,7 @@ import { AccommodationOptionsCard } from '../components/AccommodationOptionsCard
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { BudgetBreakdownCard } from '../components/BudgetBreakdownCard'
 import { ErrorState } from '../components/ErrorState'
+import { ItineraryTimeline } from '../components/ItineraryTimeline'
 import { RestaurantOptionsCard } from '../components/RestaurantOptionsCard'
 import { TransportOptionsCard } from '../components/TransportOptionsCard'
 import type { AgentRunResponse } from '../types/agent'
@@ -48,6 +49,9 @@ function realOptions(data: AgentRunResponse) {
       (option) => !option.metadata.source_ref.is_mock,
     ),
     pois: (plan?.poi_candidates ?? []).filter((option) => !option.metadata.source_ref.is_mock),
+    activities: (plan?.activity_options ?? []).filter(
+      (option) => !option.metadata.source_ref.is_mock,
+    ),
   }
 }
 
@@ -277,9 +281,17 @@ export function HomePage() {
 }
 
 function AssistantAnswer({ data }: { data: AgentRunResponse }) {
-  const { flights, hotels, pois } = realOptions(data)
+  const { flights, hotels, pois, activities } = realOptions(data)
   const budget = data.partial_plan?.budget ?? null
-  const hasCards = flights.length > 0 || hotels.length > 0 || pois.length > 0 || budget != null
+  const itinerary = data.partial_plan?.optimized_itinerary ?? null
+  const hasItinerary = (itinerary?.days?.length ?? 0) > 0
+  const hasCards =
+    flights.length > 0 ||
+    hotels.length > 0 ||
+    pois.length > 0 ||
+    activities.length > 0 ||
+    budget != null ||
+    hasItinerary
   return (
     <section className="assistant-answer-message" aria-label="agent 답변">
       <div className="llm-answer-text" style={{ whiteSpace: 'pre-line' }}>
@@ -289,7 +301,11 @@ function AssistantAnswer({ data }: { data: AgentRunResponse }) {
         <div className="assistant-detail-cards" style={{ display: 'grid', gap: 12, marginTop: 12 }}>
           {flights.length > 0 && <TransportOptionsCard options={flights} />}
           {hotels.length > 0 && <AccommodationOptionsCard options={hotels} />}
+          {activities.length > 0 && (
+            <RestaurantOptionsCard options={activities} eyebrow="관광" title="관광지 후보" />
+          )}
           {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
+          {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
           {budget != null && <BudgetBreakdownCard budget={budget} />}
         </div>
       )}

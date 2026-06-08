@@ -40,6 +40,10 @@ export function buildAgentRunAnswer(data: AgentRunResponse): string {
   const realPois = (plan?.poi_candidates ?? []).filter(
     (option) => !option.metadata.source_ref.is_mock,
   )
+  const realActivities = (plan?.activity_options ?? []).filter(
+    (option) => !option.metadata.source_ref.is_mock,
+  )
+  const itineraryDays = plan?.optimized_itinerary?.days?.length ?? 0
   const budget = plan?.budget ?? null
 
   const lines: string[] = [`${destination} 실시간 검색 결과예요.`]
@@ -56,6 +60,12 @@ export function buildAgentRunAnswer(data: AgentRunResponse): string {
   }
   if (realPois.length) {
     lines.push(`🍴 맛집 ${realPois.length}곳을 평점순으로 추렸어요. (구글 지도)`)
+  }
+  if (realActivities.length) {
+    lines.push(`📸 관광지 ${realActivities.length}곳을 평점순으로 골랐어요.`)
+  }
+  if (itineraryDays) {
+    lines.push(`🗓 ${itineraryDays}일 추천 일정을 짰어요.`)
   }
   if (budget) {
     const total = Math.round(budget.total_estimated_cost).toLocaleString('ko-KR')

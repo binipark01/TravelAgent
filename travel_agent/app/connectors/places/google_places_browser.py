@@ -23,22 +23,32 @@ class GooglePlacesExtractionError(RuntimeError):
     pass
 
 
-def build_maps_query(destination: str) -> str:
+_KIND_QUERY = {
+    "restaurant": "best restaurants in {city}",
+    "attraction": "top tourist attractions in {city}",
+}
+_KIND_DEFAULT_TYPE = {"restaurant": "맛집", "attraction": "관광지"}
+
+
+def build_maps_query(destination: str, kind: str = "restaurant") -> str:
     city = destination.split(",")[0].strip()
-    return f"best restaurants in {city}"
+    template = _KIND_QUERY.get(kind, _KIND_QUERY["restaurant"])
+    return template.format(city=city)
 
 
-def build_maps_url(destination: str) -> str:
-    return f"https://www.google.com/maps/search/{quote_plus(build_maps_query(destination))}"
+def build_maps_url(destination: str, kind: str = "restaurant") -> str:
+    return f"https://www.google.com/maps/search/{quote_plus(build_maps_query(destination, kind))}"
 
 
 @dataclass(frozen=True, slots=True)
 class GooglePlacesBrowserExtractor:
     timeout_seconds: int = 35
 
-    def extract(self, destination: str, *, limit: int = 10) -> list[dict[str, Any]]:
+    def extract(
+        self, destination: str, *, kind: str = "restaurant", limit: int = 10
+    ) -> list[dict[str, Any]]:
         script_path = Path(__file__).with_name("google_places_extract.mjs")
-        url = build_maps_url(destination)
+        url = build_maps_url(destination, kind)
         command = ["node", str(script_path), url, str(self.timeout_seconds), str(limit)]
         try:
             completed = subprocess.run(
@@ -87,24 +97,27 @@ def extract_live_pois(
     destination: str,
     *,
     currency: str,
+    kind: str = "restaurant",
     timeout_seconds: int = 35,
     limit: int = 8,
 ) -> list[POIOption]:
     try:
         places = GooglePlacesBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-            destination, limit=max(limit, 10)
+            destination, kind=kind, limit=max(limit, 10)
         )
     except GooglePlacesExtractionError:
         return []
-    options = [place_to_poi_option(place, destination, currency) for place in places]
+    options = [place_to_poi_option(place, destination, currency, kind=kind) for place in places]
     # 평점 높은 순으로 정렬해 좋은 곳부터 보여준다.
     options.sort(key=lambda option: option.rating or 0.0, reverse=True)
     return options[:limit]
 
 
-def place_to_poi_option(place: dict[str, Any], destination: str, currency: str) -> POIOption:
+def place_to_poi_option(
+    place: dict[str, Any], destination: str, currency: str, *, kind: str = "restaurant"
+) -> POIOption:
     rating = place.get("rating")
-    category = place.get("category") or "맛집"
+    category = place.get("category") or _KIND_DEFAULT_TYPE.get(kind, "맛집")
     notes = ["구글 지도 실시간 추출 · 방문 전 영업시간·예약 확인"]
     if rating:
         reviews = place.get("reviews")

@@ -1744,6 +1744,19 @@ legend {
   padding-left: 18px;
 }
 
+.option-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f766e;
+  text-decoration: none;
+}
+
+.option-link:hover {
+  text-decoration: underline;
+}
+
 .source-row-header {
   align-items: start;
   display: flex;

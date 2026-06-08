@@ -23,12 +23,19 @@ class RestaurantAgent:
         if not brief or not state.selected_destination:
             return state
 
-        # 실시간: 구글 지도 맛집 검색 화면을 브라우저로 분석해 실제 장소만 사용한다.
+        # 실시간: 구글 지도에서 맛집 + 관광지를 브라우저로 분석해 실제 장소만 사용한다.
         # 못 가져오면 mock으로 채우지 않고 비워 둔다(mock은 사용자에게 노출 금지).
         if self.live_enabled:
             state.poi_candidates = extract_live_pois(
                 state.selected_destination,
                 currency=state.currency,
+                kind="restaurant",
+                timeout_seconds=self.live_timeout,
+            )
+            state.activity_options = extract_live_pois(
+                state.selected_destination,
+                currency=state.currency,
+                kind="attraction",
                 timeout_seconds=self.live_timeout,
             )
             return state
