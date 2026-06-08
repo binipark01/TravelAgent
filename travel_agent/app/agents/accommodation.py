@@ -10,11 +10,17 @@ from travel_agent.app.tools.accommodation_search import AccommodationSearchTool
 
 
 def _nightly_budget(brief: TripBrief) -> int | None:
-    """예산을 1박 상한으로 해석한다('20안쪽'=20만원/박 같은 캡 의도)."""
-    cap = brief.budget_per_person or brief.budget_total
-    if not cap or cap <= 0:
-        return None
-    return int(cap)
+    """예산을 1박 '방값' 상한으로 해석한다.
+
+    한 방을 인원수만큼 함께 쓴다고 보고, 1인 예산이 있으면 인원을 곱한다.
+    예: 2명·'20안쪽'(1인 10만/총 20만) → 방 1박 상한 20만원.
+    """
+    travelers = brief.travelers or 1
+    if brief.budget_per_person and brief.budget_per_person > 0:
+        return int(brief.budget_per_person * travelers)
+    if brief.budget_total and brief.budget_total > 0:
+        return int(brief.budget_total)
+    return None
 
 
 def _stay_nights(brief: TripBrief) -> int:

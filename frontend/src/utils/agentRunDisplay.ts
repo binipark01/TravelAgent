@@ -49,6 +49,10 @@ export function buildAgentRunAnswer(data: AgentRunResponse): string {
   }
   if (realHotels.length) {
     lines.push(summarizeHotels(realHotels))
+    const roomPref = plan?.brief?.accommodation_preference
+    if (roomPref) {
+      lines.push(`🛏 '${roomPref}' 같은 객실 조건은 예약 페이지에서 확인하세요. (도시 검색은 객실 타입·정원을 거르지 않아요)`)
+    }
   }
   if (realPois.length) {
     lines.push(`🍴 맛집 ${realPois.length}곳을 평점순으로 추렸어요. (구글 지도)`)

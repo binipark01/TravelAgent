@@ -97,6 +97,22 @@ def test_stay_nights_uses_duration_and_caps_wide_range() -> None:
     assert _stay_nights(month) == 2
 
 
+def test_nightly_budget_scales_with_travelers() -> None:
+    from travel_agent.app.agents.accommodation import _nightly_budget
+    from travel_agent.app.schemas.brief import TripBrief
+
+    # 2명이 한 방, 1인 10만 → 방 1박 상한 20만
+    two = TripBrief(travelers=2, budget_per_person=100_000, budget_total=200_000, currency="KRW")
+    assert _nightly_budget(two) == 200_000
+
+    # 1명, 1인 20만 → 20만
+    one = TripBrief(travelers=1, budget_per_person=200_000, currency="KRW")
+    assert _nightly_budget(one) == 200_000
+
+    # 예산 정보 없음 → 상한 없음
+    assert _nightly_budget(TripBrief(travelers=2, currency="KRW")) is None
+
+
 def test_curate_hotels_filters_budget_and_sorts() -> None:
     options = [_hotel("A", 371_672), _hotel("B", 98_337), _hotel("C", 250_000), _hotel("D", 67_166)]
 
