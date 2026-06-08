@@ -112,8 +112,9 @@ def _search_window(brief: TripBrief, nights: int) -> tuple[date, date | None]:
     end = brief.end_date
     span = (end - start).days if end else 0
     if brief.flexible_dates and span <= nights:
-        start = start - timedelta(days=3)
-        end = start + timedelta(days=6) + timedelta(days=nights)
+        # 사용자가 정한 출발일보다 더 일찍은 검색하지 않는다.
+        # ("6일 이후/부터" 같은 하한 의도 존중) 출발일은 그대로 두고 앞으로만 펼친다.
+        end = start + timedelta(days=6 + nights)
     return start, end
 
 

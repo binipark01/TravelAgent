@@ -146,11 +146,12 @@ def test_search_window_expands_for_flexible_dates() -> None:
     start, end = _search_window(brief, 5)
     deps = _candidate_departures(start, end, 5, 9)
 
-    # 유연 일정: 출발일 ±3일(7/4~7/10)을 검색한다.
-    assert start == date(2026, 7, 4)
-    assert deps[0] == date(2026, 7, 4)
-    assert deps[-1] == date(2026, 7, 10)
+    # 유연 일정: 출발일(7/7) 이전은 검색하지 않고 앞으로만 펼친다(7/7~7/13).
+    assert start == date(2026, 7, 7)
+    assert deps[0] == date(2026, 7, 7)
+    assert deps[-1] == date(2026, 7, 13)
     assert len(deps) == 7
+    assert all(departure >= date(2026, 7, 7) for departure in deps)
 
 
 def test_search_window_keeps_exact_dates() -> None:
