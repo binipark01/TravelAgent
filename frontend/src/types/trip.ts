@@ -98,6 +98,7 @@ export interface TripPlanState {
   draft_itinerary?: Itinerary | null
   optimized_itinerary?: Itinerary | null
   budget?: BudgetEstimate | null
+  visa_result?: VisaCheckResult | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -105,6 +106,20 @@ export interface TripPlanState {
   source_refs: SourceRef[]
   evidence_refs: string[]
   status: TripStatus
+}
+
+export interface VisaCheckResult {
+  destination_country: string
+  summary: string
+  requires_official_verification: boolean
+  missing_required_info: string[]
+  passport_country?: string | null
+  visa_required?: boolean | null
+  visa_free_days?: number | null
+  entry_authorization?: string | null
+  passport_validity_rule?: string | null
+  details: string[]
+  source_url?: string | null
 }
 
 export interface TripCreateRequest {

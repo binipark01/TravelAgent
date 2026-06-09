@@ -90,6 +90,7 @@ class FinalPlanResponse(StrictBaseModel):
     accommodation_options: list[AccommodationOption]
     itinerary: Itinerary | None
     budget: BudgetEstimate | None
+    visa_result: VisaCheckResult | None = None
     risk_findings: list[CriticFinding]
     critic_findings: list[CriticFinding]
     approval_requests: list[ApprovalRequest]

@@ -5,6 +5,7 @@ import { ItineraryTimeline } from './ItineraryTimeline'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
+import { VisaCard } from './VisaCard'
 
 /** TripPlanState에서 실시간(non-mock) 결과 카드를 렌더한다. 채팅·저장 뷰 공용. */
 export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
@@ -16,6 +17,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const budget = plan.budget ?? null
   const itinerary = plan.optimized_itinerary ?? null
   const hasItinerary = (itinerary?.days?.length ?? 0) > 0
+  const visa = plan.visa_result ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -23,7 +25,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     pois.length > 0 ||
     activities.length > 0 ||
     budget != null ||
-    hasItinerary
+    hasItinerary ||
+    visa != null
   if (!hasAny) return null
 
   return (
@@ -39,6 +42,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
       {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
+      {visa != null && <VisaCard visa={visa} />}
     </div>
   )
 }

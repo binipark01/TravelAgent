@@ -114,6 +114,14 @@ class VisaCheckResult(StrictBaseModel):
     summary: str
     requires_official_verification: bool = True
     missing_required_info: list[str] = Field(default_factory=list)
+    # 구조화된 입국 요건(있을 때만 채운다)
+    passport_country: str | None = None
+    visa_required: bool | None = None
+    visa_free_days: int | None = None
+    entry_authorization: str | None = None  # 예: "전자여행허가 불필요", "ESTA 사전 승인 필요"
+    passport_validity_rule: str | None = None  # 예: "입국 시 잔여 유효기간 6개월 이상 권장"
+    details: list[str] = Field(default_factory=list)  # 화면에 보여줄 핵심 안내 항목
+    source_url: str | None = None
     metadata: ProviderMetadata
 
 

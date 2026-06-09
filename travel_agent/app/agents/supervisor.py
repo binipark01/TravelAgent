@@ -18,6 +18,7 @@ from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
 from travel_agent.app.agents.transport import FlightAgent
 from travel_agent.app.agents.user_profile import UserProfileAgent
+from travel_agent.app.agents.visa import VisaAgent
 from travel_agent.app.orchestration.agent_recorder import AgentRunRecorder
 from travel_agent.app.orchestration.run_context import RunContext
 from travel_agent.app.orchestration.state_machine import (
@@ -69,6 +70,7 @@ class TravelSupervisorAgent:
             live_timeout=max(context.settings.flight_source_probe_timeout_seconds, 35),
         )
         self.route_agent = RouteAgent(providers.routes)
+        self.visa_agent = VisaAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -211,6 +213,16 @@ class TravelSupervisorAgent:
                     else "예산 계산 없음"
                 ),
             )
+        # 항상 실행하는 횡단 정보(입국/비자 등) — LLM 선택과 무관하게 해외여행 필수 정보
+        self._recorded_step(
+            recorder,
+            "VisaAgent",
+            "입국/비자 요건 확인",
+            lambda: self.visa_agent.run(state),
+            lambda: (
+                state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+            ),
+        )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
@@ -287,6 +299,7 @@ class TravelSupervisorAgent:
 
         set_status(state, TripStatus.drafting, "Draft itinerary stage started.")
         self.route_agent.run(state)
+        self.visa_agent.run(state)
 
         self.budget_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")
