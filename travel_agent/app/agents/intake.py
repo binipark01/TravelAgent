@@ -29,9 +29,13 @@ class IntakeAgent:
                 )
             except Exception as exc:
                 warnings.append(f"요청 문장을 규칙 기반으로 정리했습니다: {exc}")
-                extracted = self._fallback_parse(message, currency, reference_year)
+                extracted = self._fallback_parse_with_history(
+                    message, currency, reference_year, history
+                )
         else:
-            extracted = self._fallback_parse(message, currency, reference_year)
+            extracted = self._fallback_parse_with_history(
+                message, currency, reference_year, history
+            )
 
         brief = self._merge_briefs(existing_brief, extracted) if existing_brief else extracted
         self._normalize_trip_dates(brief)
@@ -47,6 +51,29 @@ class IntakeAgent:
             brief.duration_nights = max(brief.duration_days - 1, 0)
             if brief.start_date and brief.end_date is None:
                 brief.end_date = brief.start_date + timedelta(days=brief.duration_nights)
+
+    def _fallback_parse_with_history(
+        self,
+        message: str,
+        currency: str,
+        reference_year: int | None,
+        history: list[str] | None,
+    ) -> TripBrief:
+        """규칙 기반 파서도 이전 대화를 누적해 해석한다.
+
+        브라우저의 매 턴은 새 run이라 existing_brief가 비어 있다. LLM이 실패해
+        규칙 파서로 떨어지면 history를 무시해 '삿포로 가고싶어 → 4박5일로'에서
+        목적지가 사라진다. 과거→현재 순으로 접어 올려(merge) 최신 발화가 이전
+        값을 덮어쓰되, 명시하지 않은 항목은 이전 문맥을 유지한다.
+        """
+        prior = [m for m in (history or []) if m and m.strip()]
+        accumulated: TripBrief | None = None
+        for past in prior:
+            accumulated = self._merge_briefs(
+                accumulated, self._fallback_parse(past, currency, reference_year)
+            )
+        current = self._fallback_parse(message, currency, reference_year)
+        return self._merge_briefs(accumulated, current) if accumulated else current
 
     def _fallback_parse(
         self, message: str, currency: str, reference_year: int | None = None

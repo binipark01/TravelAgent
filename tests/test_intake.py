@@ -91,3 +91,31 @@ def test_flexible_window_keeps_range_and_duration() -> None:
     assert brief.end_date is not None
     # 유연 날짜: 범위(window)가 여행 길이보다 넓게 유지된다(여러 출발일 검색용).
     assert (brief.end_date - brief.start_date).days > brief.duration_nights
+
+
+def test_fallback_parser_uses_history_to_keep_context() -> None:
+    # 브라우저 멀티턴: 매 턴이 새 run이라 existing_brief가 없어도, 규칙 파서가
+    # history를 누적해 이전 목적지를 기억해야 한다(LLM 실패 시 안전망).
+    agent = IntakeAgent(enable_live_llm=False)
+
+    result = agent.run("4박5일로 가고싶어", history=["삿포로 가고싶어"])
+    brief = result.brief
+    assert "Sapporo" in brief.destinations  # 목적지를 잊지 않는다
+    assert brief.duration_days == 5
+
+    # 추가 정보(인원)도 누적된다
+    result2 = agent.run(
+        "2명이서 갈거야", history=["삿포로 가고싶어", "4박5일로 가고싶어"]
+    )
+    brief2 = result2.brief
+    assert "Sapporo" in brief2.destinations
+    assert brief2.duration_days == 5
+    assert brief2.travelers == 2
+
+
+def test_fallback_parser_without_history_unchanged() -> None:
+    # history가 없으면 기존 단일 메시지 파싱과 동일해야 한다(회귀 방지).
+    agent = IntakeAgent(enable_live_llm=False)
+    result = agent.run("삿포로 4박5일 여행", history=None)
+    assert result.brief.destinations == ["Sapporo"]
+    assert result.brief.duration_days == 5
