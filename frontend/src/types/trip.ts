@@ -99,6 +99,7 @@ export interface TripPlanState {
   optimized_itinerary?: Itinerary | null
   budget?: BudgetEstimate | null
   visa_result?: VisaCheckResult | null
+  local_transport?: LocalTransportPlan | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -106,6 +107,24 @@ export interface TripPlanState {
   source_refs: SourceRef[]
   evidence_refs: string[]
   status: TripStatus
+}
+
+export interface LocalTransportItem {
+  category: string
+  name: string
+  detail?: string | null
+  price?: string | null
+  duration?: string | null
+  source_url?: string | null
+}
+
+export interface LocalTransportPlan {
+  city: string
+  summary: string
+  airport_transfers: LocalTransportItem[]
+  transit_passes: LocalTransportItem[]
+  tips: string[]
+  source_url?: string | null
 }
 
 export interface VisaCheckResult {

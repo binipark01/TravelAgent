@@ -1832,6 +1832,57 @@ legend {
   text-decoration: underline;
 }
 
+/* 현지 이동 카드 */
+.transit-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 12px 0 6px;
+}
+.transit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.transit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.transit-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.transit-row__detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+.transit-row__meta {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.transit-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  white-space: nowrap;
+}
+.transit-chip--price {
+  background: rgba(37, 99, 235, 0.14);
+  color: var(--accent, #2563eb);
+}
+
 .saved-trip-header {
   display: flex;
   align-items: center;

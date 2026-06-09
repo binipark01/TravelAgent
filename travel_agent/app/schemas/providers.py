@@ -125,6 +125,25 @@ class VisaCheckResult(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class LocalTransportItem(StrictBaseModel):
+    category: str  # "airport" | "pass"
+    name: str
+    detail: str | None = None
+    price: str | None = None
+    duration: str | None = None
+    source_url: str | None = None
+
+
+class LocalTransportPlan(StrictBaseModel):
+    city: str
+    summary: str
+    airport_transfers: list[LocalTransportItem] = Field(default_factory=list)
+    transit_passes: list[LocalTransportItem] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class FxConversionRequest(StrictBaseModel):
     amount: float
     from_currency: str

@@ -26,6 +26,7 @@ class PresentationAgent:
             itinerary=state.optimized_itinerary,
             budget=state.budget,
             visa_result=state.visa_result,
+            local_transport=state.local_transport,
             risk_findings=state.risk_findings,
             critic_findings=state.critic_findings,
             approval_requests=state.approval_requests,

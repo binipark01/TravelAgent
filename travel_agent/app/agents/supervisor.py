@@ -13,6 +13,7 @@ from travel_agent.app.agents.llm_client import (
     OpenAITripBriefClient,
     codex_brief_available,
 )
+from travel_agent.app.agents.local_transport import LocalTransportAgent
 from travel_agent.app.agents.poi import RestaurantAgent
 from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
@@ -71,6 +72,7 @@ class TravelSupervisorAgent:
         )
         self.route_agent = RouteAgent(providers.routes)
         self.visa_agent = VisaAgent()
+        self.local_transport_agent = LocalTransportAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -213,7 +215,7 @@ class TravelSupervisorAgent:
                     else "예산 계산 없음"
                 ),
             )
-        # 항상 실행하는 횡단 정보(입국/비자 등) — LLM 선택과 무관하게 해외여행 필수 정보
+        # 항상 실행하는 횡단 정보(입국/비자, 현지 이동) — LLM 선택과 무관한 해외여행 필수 정보
         self._recorded_step(
             recorder,
             "VisaAgent",
@@ -221,6 +223,17 @@ class TravelSupervisorAgent:
             lambda: self.visa_agent.run(state),
             lambda: (
                 state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+            ),
+        )
+        self._recorded_step(
+            recorder,
+            "LocalTransportAgent",
+            "현지 교통 안내",
+            lambda: self.local_transport_agent.run(state),
+            lambda: (
+                f"{state.local_transport.city} 교통 안내"
+                if state.local_transport
+                else "현지 교통 데이터 없음"
             ),
         )
         self._collect_provider_source_refs(state)
@@ -300,6 +313,7 @@ class TravelSupervisorAgent:
         set_status(state, TripStatus.drafting, "Draft itinerary stage started.")
         self.route_agent.run(state)
         self.visa_agent.run(state)
+        self.local_transport_agent.run(state)
 
         self.budget_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")

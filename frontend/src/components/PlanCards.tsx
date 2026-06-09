@@ -2,6 +2,7 @@ import type { TripPlanState } from '../types/trip'
 import { AccommodationOptionsCard } from './AccommodationOptionsCard'
 import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
+import { LocalTransportCard } from './LocalTransportCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
@@ -18,6 +19,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const itinerary = plan.optimized_itinerary ?? null
   const hasItinerary = (itinerary?.days?.length ?? 0) > 0
   const visa = plan.visa_result ?? null
+  const localTransport = plan.local_transport ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -26,7 +28,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     activities.length > 0 ||
     budget != null ||
     hasItinerary ||
-    visa != null
+    visa != null ||
+    localTransport != null
   if (!hasAny) return null
 
   return (
@@ -42,6 +45,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
       {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
+      {localTransport != null && <LocalTransportCard plan={localTransport} />}
       {visa != null && <VisaCard visa={visa} />}
     </div>
   )
