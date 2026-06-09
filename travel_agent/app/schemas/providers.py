@@ -159,6 +159,25 @@ class FxConversionResult(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class FxSample(StrictBaseModel):
+    local_label: str  # 예: "10,000엔"
+    krw_label: str  # 예: "약 93,000원"
+
+
+class FxInfo(StrictBaseModel):
+    base_currency: str  # 예: KRW
+    target_currency: str  # 예: JPY
+    target_per_base: float  # 1 KRW = ? target
+    base_per_target: float  # 1 target = ? KRW (더 직관적)
+    samples: list[FxSample] = Field(default_factory=list)
+    budget_total_base: float | None = None
+    budget_total_target: float | None = None
+    budget_total_target_label: str | None = None
+    tips: list[str] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class BookingRequest(StrictBaseModel):
     action_type: str
     payload: dict

@@ -1883,6 +1883,48 @@ legend {
   color: var(--accent, #2563eb);
 }
 
+/* 환율 카드 */
+.fx-rate-badge {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.14);
+  color: var(--accent, #2563eb);
+  white-space: nowrap;
+}
+.fx-budget {
+  font-size: 14px;
+  margin: 8px 0 12px;
+}
+.fx-samples {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.fx-samples li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+  font-size: 14px;
+}
+.fx-samples__local {
+  font-weight: 700;
+}
+.fx-samples__arrow {
+  color: var(--muted);
+}
+.fx-samples__krw {
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+}
+
 .saved-trip-header {
   display: flex;
   align-items: center;

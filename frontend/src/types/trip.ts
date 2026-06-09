@@ -100,6 +100,7 @@ export interface TripPlanState {
   budget?: BudgetEstimate | null
   visa_result?: VisaCheckResult | null
   local_transport?: LocalTransportPlan | null
+  fx_info?: FxInfo | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -123,6 +124,24 @@ export interface LocalTransportPlan {
   summary: string
   airport_transfers: LocalTransportItem[]
   transit_passes: LocalTransportItem[]
+  tips: string[]
+  source_url?: string | null
+}
+
+export interface FxSample {
+  local_label: string
+  krw_label: string
+}
+
+export interface FxInfo {
+  base_currency: string
+  target_currency: string
+  target_per_base: number
+  base_per_target: number
+  samples: FxSample[]
+  budget_total_base?: number | null
+  budget_total_target?: number | null
+  budget_total_target_label?: string | null
   tips: string[]
   source_url?: string | null
 }

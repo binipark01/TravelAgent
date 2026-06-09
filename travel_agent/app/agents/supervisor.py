@@ -7,6 +7,7 @@ from travel_agent.app.agents.budget import BudgetAgent
 from travel_agent.app.agents.core_planner import CorePlannerAgent
 from travel_agent.app.agents.critic import PlanCriticAgent
 from travel_agent.app.agents.destination import DestinationDiscoveryAgent
+from travel_agent.app.agents.fx import FxAgent
 from travel_agent.app.agents.intake import IntakeAgent
 from travel_agent.app.agents.llm_client import (
     CodexTripBriefClient,
@@ -73,6 +74,7 @@ class TravelSupervisorAgent:
         self.route_agent = RouteAgent(providers.routes)
         self.visa_agent = VisaAgent()
         self.local_transport_agent = LocalTransportAgent()
+        self.fx_agent = FxAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -236,6 +238,18 @@ class TravelSupervisorAgent:
                 else "현지 교통 데이터 없음"
             ),
         )
+        self._recorded_step(
+            recorder,
+            "FxAgent",
+            "환율/예산 환산",
+            lambda: self.fx_agent.run(state),
+            lambda: (
+                f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
+                f"{state.fx_info.base_currency}"
+                if state.fx_info
+                else "환율 정보 없음"
+            ),
+        )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
@@ -316,6 +330,7 @@ class TravelSupervisorAgent:
         self.local_transport_agent.run(state)
 
         self.budget_agent.run(state)
+        self.fx_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")
         self.critic_agent.run(state)
         blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]

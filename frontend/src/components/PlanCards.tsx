@@ -1,6 +1,7 @@
 import type { TripPlanState } from '../types/trip'
 import { AccommodationOptionsCard } from './AccommodationOptionsCard'
 import { BudgetBreakdownCard } from './BudgetBreakdownCard'
+import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
@@ -20,6 +21,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const hasItinerary = (itinerary?.days?.length ?? 0) > 0
   const visa = plan.visa_result ?? null
   const localTransport = plan.local_transport ?? null
+  const fx = plan.fx_info ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -29,7 +31,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     budget != null ||
     hasItinerary ||
     visa != null ||
-    localTransport != null
+    localTransport != null ||
+    fx != null
   if (!hasAny) return null
 
   return (
@@ -45,6 +48,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
       {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
+      {fx != null && <FxCard fx={fx} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
       {visa != null && <VisaCard visa={visa} />}
     </div>

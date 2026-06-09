@@ -18,6 +18,7 @@ from travel_agent.app.schemas.itinerary import Itinerary
 from travel_agent.app.schemas.providers import (
     AccommodationOption,
     FlightOption,
+    FxInfo,
     LocalTransportPlan,
     POIOption,
     VisaCheckResult,
@@ -51,6 +52,7 @@ class TripPlanState(StrictBaseModel):
     risk_findings: list[CriticFinding] = Field(default_factory=list)
     visa_result: VisaCheckResult | None = None
     local_transport: LocalTransportPlan | None = None
+    fx_info: FxInfo | None = None
     critic_findings: list[CriticFinding] = Field(default_factory=list)
     approval_requests: list[ApprovalRequest] = Field(default_factory=list)
     booking_records: list[BookingRecord] = Field(default_factory=list)
@@ -94,6 +96,7 @@ class FinalPlanResponse(StrictBaseModel):
     budget: BudgetEstimate | None
     visa_result: VisaCheckResult | None = None
     local_transport: LocalTransportPlan | None = None
+    fx_info: FxInfo | None = None
     risk_findings: list[CriticFinding]
     critic_findings: list[CriticFinding]
     approval_requests: list[ApprovalRequest]
