@@ -133,6 +133,20 @@ class NaverHotelBrowserExtractor:
         )
 
 
+def _min_star(text: str | None) -> int | None:
+    match = re.search(r"(\d)\s*성급", text or "")
+    return int(match.group(1)) if match else None
+
+
+def _min_rating(text: str | None) -> float | None:
+    match = re.search(r"평점\s*(\d(?:\.\d)?)\s*(?:이상|넘|초과|\+)", text or "")
+    return float(match.group(1)) if match else None
+
+
+def _require_breakfast(text: str | None) -> bool:
+    return "조식" in (text or "")
+
+
 def extract_live_accommodation_options(
     destination: str,
     *,
@@ -142,6 +156,7 @@ def extract_live_accommodation_options(
     limit: int = 8,
     max_nightly_price: int | None = None,
     room_preference: str | None = None,
+    request_text: str | None = None,
 ) -> list[AccommodationOption]:
     """네이버+구글 호텔 검색을 합쳐 실제 숙소만 추려서 정리한다(mock 미사용).
 
@@ -178,7 +193,14 @@ def extract_live_accommodation_options(
     except GoogleHotelExtractionError:
         pass
 
-    curated = _curate_hotels(options, max_nightly_price=max_nightly_price, limit=limit)
+    curated = _curate_hotels(
+        options,
+        max_nightly_price=max_nightly_price,
+        limit=limit,
+        min_star=_min_star(request_text),
+        min_rating=_min_rating(request_text),
+        require_breakfast=_require_breakfast(request_text),
+    )
 
     # 침대 선호(트윈/더블)가 있으면 상위 후보를 호텔별로 딥체크해 객실 유무를 표시한다.
     if room_preference:
@@ -196,17 +218,24 @@ def extract_live_accommodation_options(
 
 
 def _curate_hotels(
-    options: list[AccommodationOption], *, max_nightly_price: int | None, limit: int
+    options: list[AccommodationOption],
+    *,
+    max_nightly_price: int | None,
+    limit: int,
+    min_star: int | None = None,
+    min_rating: float | None = None,
+    require_breakfast: bool = False,
 ) -> list[AccommodationOption]:
-    """예산(1박 상한)·가격·소스 다양성을 함께 보고 숙소를 추려서 정리한다.
+    """예산(1박 상한)·성급·평점·조식·소스 다양성을 함께 보고 숙소를 추려서 정리한다.
 
-    같은 호텔이 두 소스에 모두 나오면 더 싼 쪽만 남기고, 예산 이내를 우선한 뒤
-    네이버·구글이 둘 다 노출되도록 번갈아 담는다. 추천 이유(최저가/예산 이내)는
-    notes 맨 앞에 붙여 화면에 바로 보이게 한다.
+    명시 조건(N성급 이상/평점 N 이상/조식)을 먼저 거른다. 정보가 없는 숙소는 확인 불가라
+    제외하지 않고 남긴다. 같은 호텔이 두 소스에 모두 나오면 더 싼 쪽만 남기고, 예산 이내를
+    우선한 뒤 네이버·구글이 둘 다 노출되도록 번갈아 담는다.
     """
     if not options:
         return []
     options = _dedupe_hotels(options)
+    options = _apply_hotel_filters(options, min_star, min_rating, require_breakfast)
     options.sort(key=lambda option: option.nightly_price.amount or 10**12)
 
     over_budget_only = False
@@ -250,6 +279,29 @@ def _curate_hotels(
         if tags:
             option.notes.insert(0, " · ".join(tags))
     return curated
+
+
+def _has_breakfast(amenities: list[str]) -> bool:
+    return any("조식" in item or "레스토랑" in item for item in amenities)
+
+
+def _apply_hotel_filters(
+    options: list[AccommodationOption],
+    min_star: int | None,
+    min_rating: float | None,
+    require_breakfast: bool,
+) -> list[AccommodationOption]:
+    """명시 조건으로 거른다. 정보가 없는 숙소는 확인 불가라 남기고, 거른 결과가 비면 원복."""
+    if min_star:
+        kept = [o for o in options if o.star_rating is None or o.star_rating >= min_star]
+        options = kept or options
+    if min_rating:
+        kept = [o for o in options if o.rating is None or o.rating >= min_rating]
+        options = kept or options
+    if require_breakfast:
+        kept = [o for o in options if not o.amenities or _has_breakfast(o.amenities)]
+        options = kept or options
+    return options
 
 
 def _dedupe_hotels(options: list[AccommodationOption]) -> list[AccommodationOption]:

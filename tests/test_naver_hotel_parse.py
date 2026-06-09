@@ -193,6 +193,37 @@ def test_curate_hotels_includes_both_sources() -> None:
     assert "google_hotel" in providers
 
 
+def test_hotel_constraint_filters() -> None:
+    from travel_agent.app.connectors.accommodations.naver_hotel_browser import (
+        _apply_hotel_filters,
+        _min_rating,
+        _min_star,
+        _require_breakfast,
+    )
+
+    assert _min_star("4성급 이상 호텔 추천") == 4
+    assert _min_rating("평점 4.5 이상으로") == 4.5
+    assert _require_breakfast("조식 포함 호텔") is True
+    assert _min_star("그냥 호텔") is None
+
+    def gh(name, *, star=None, rating=4.0, amenities=None, provider="google_hotel"):
+        raw = rating * 2 if provider == "naver_hotel" else rating
+        return hotel_to_option(
+            {"name": name, "amount": 100_000, "rating": raw, "star": star,
+             "reviews": None, "amenities": amenities or [], "source_url": "x"},
+            "Sapporo", 2, "KRW", provider=provider,
+        )
+
+    h4 = gh("g4", star=4)
+    h3 = gh("g3", star=3)
+    nav = gh("nav", provider="naver_hotel")  # 성급 정보 없음
+    kept = _apply_hotel_filters([h3, h4, nav], 4, None, False)
+    # 3성급은 빠지고, 4성급 + 성급 미상(네이버)은 남는다.
+    assert h4 in kept
+    assert nav in kept
+    assert h3 not in kept
+
+
 def test_curate_hotels_dedupes_same_name_keeps_cheaper() -> None:
     naver = _g_hotel("베셀 호텔 캄파나", 126_000)
     google = _g_hotel("베셀호텔 캄파나", 121_000, provider="google_hotel", rating=4.5)

@@ -105,6 +105,7 @@ def extract_live_flight_options(
         limit,
         direct_only=_direct_requested(request_text),
         flight_cap=_flight_price_cap(request_text),
+        airline=_preferred_airline(request_text),
     )
 
 
@@ -132,6 +133,25 @@ def _search_window(
 
 def _is_direct(option: FlightOption) -> bool:
     return any("경유: 직항" in note for note in option.notes)
+
+
+_KNOWN_AIRLINES = (
+    "대한항공", "아시아나항공", "아시아나", "진에어", "제주항공", "티웨이항공", "티웨이",
+    "에어부산", "에어서울", "이스타항공", "이스타", "에어로케이", "에어프레미아",
+    "피치항공", "피치", "스쿠트", "전일본공수", "일본항공", "산동항공", "파라타항공",
+)
+
+
+def _preferred_airline(text: str | None) -> str | None:
+    """'대한항공으로' 같은 항공사 지정 감지. 부정 표현('말고')은 무시."""
+    if not text:
+        return None
+    if any(neg in text for neg in ("말고", "제외", "빼고", "말구")):
+        return None
+    for name in _KNOWN_AIRLINES:
+        if name in text:
+            return name
+    return None
 
 
 def _direct_requested(text: str | None) -> bool:
@@ -208,6 +228,7 @@ def _curate(
     *,
     direct_only: bool = False,
     flight_cap: int | None = None,
+    airline: str | None = None,
 ) -> list[FlightOption]:
     """검색한 후보를 요청 조건·가격·날짜·소스 다양성을 함께 보고 추려서 정리한다.
 
@@ -217,12 +238,19 @@ def _curate(
     """
     if not options:
         return []
-    # 직항만/항공 예산 필터(요청 시). 조건 만족 후보가 없으면 원래 풀을 유지한다.
+    # 직항만/항공사/항공 예산 필터(요청 시). 조건 만족 후보가 없으면 원래 풀을 유지한다.
     over_budget_only = False
+    airline_unavailable = False
     if direct_only:
         direct = [option for option in options if _is_direct(option)]
         if direct:
             options = direct
+    if airline:
+        matched = [option for option in options if airline in option.airline]
+        if matched:
+            options = matched
+        else:
+            airline_unavailable = True
     if flight_cap:
         within = [option for option in options if (option.price.amount or 0) <= flight_cap]
         if within:
@@ -263,6 +291,8 @@ def _curate(
             tags.append("💰 추천 중 최저가")
             if over_budget_only and flight_cap:
                 tags.append(f"⚠️ {flight_cap // 10000}만원 이내 항공편이 없어 최저가 표시")
+            if airline_unavailable and airline:
+                tags.append(f"⚠️ '{airline}' 항공편을 찾지 못해 전체 표시")
         if direct_only and _is_direct(option):
             tags.append("직항")
         if want_morning and option.departure_time.hour < 12:

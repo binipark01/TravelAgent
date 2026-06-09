@@ -213,6 +213,64 @@ def test_direct_and_flight_budget_detection() -> None:
     assert _flight_price_cap("항공권 추천해줘") is None  # 상한 표현 없음
 
 
+def test_preferred_airline_detection() -> None:
+    from travel_agent.app.agents.flight_live_search import _preferred_airline
+
+    assert _preferred_airline("삿포로 대한항공으로 찾아줘") == "대한항공"
+    assert _preferred_airline("아시아나 항공권 알아봐") == "아시아나"
+    assert _preferred_airline("진에어로 4박5일") == "진에어"
+    # 부정 표현은 항공사 지정으로 보지 않는다.
+    assert _preferred_airline("대한항공 말고 다른 거") is None
+    assert _preferred_airline("그냥 항공권 찾아줘") is None
+    assert _preferred_airline(None) is None
+
+
+def _airline_option(airline: str, price: str) -> object:
+    links = _links()
+    candidate = FlightFareCandidate(
+        provider="naver_flight", airline=airline,
+        outbound_departure="09:00 ICN", outbound_arrival="11:50 CTS",
+        inbound_departure="12:55 CTS", inbound_arrival="16:00 ICN",
+        outbound_duration="직항, 02시간 30분", inbound_duration="직항, 03시간 05분",
+        price=price, stops="직항", source_url=links.naver_url, notes=[],
+    )
+    option = flight_candidate_to_option(candidate, links, "KRW")
+    assert option is not None
+    return option
+
+
+def test_curate_filters_by_airline() -> None:
+    brief = TripBrief(
+        origin="서울", destinations=["Sapporo"], start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    ke = _airline_option("대한항공", "왕복 700,000원")  # 더 비쌈
+    jin = _airline_option("진에어", "왕복 500,000원")  # 더 쌈
+
+    curated = _curate([jin, ke], brief, 5, airline="대한항공")
+
+    # 가격이 더 비싸도 지정 항공사(대한항공)만 남는다.
+    assert ke in curated
+    assert jin not in curated
+
+
+def test_curate_airline_unavailable_falls_back_with_note() -> None:
+    brief = TripBrief(
+        origin="서울", destinations=["Sapporo"], start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    jin = _airline_option("진에어", "왕복 500,000원")
+    jeju = _airline_option("제주항공", "왕복 520,000원")
+
+    curated = _curate([jin, jeju], brief, 5, airline="대한항공")
+
+    # 지정 항공사가 없으면 전체를 보여주되 안내 태그를 단다.
+    assert len(curated) == 2
+    assert any(
+        any("'대한항공' 항공편을 찾지 못해" in note for note in o.notes) for o in curated
+    )
+
+
 def _conn_option(outbound: str, price: str) -> object:
     brief = TripBrief(
         origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 3),

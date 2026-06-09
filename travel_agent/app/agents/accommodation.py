@@ -65,6 +65,7 @@ class AccommodationAgent:
                 timeout_seconds=self.live_timeout,
                 max_nightly_price=_nightly_budget(brief),
                 room_preference=brief.accommodation_preference,
+                request_text=state.raw_user_message,
             )
             return state
 
