@@ -15,6 +15,13 @@ from pydantic import ValidationError
 from travel_agent.app.schemas.brief import TripBrief
 
 
+class RetryableBriefError(RuntimeError):
+    """일시적(빈 출력·JSON 파싱 실패·비정상 종료) 추출 실패 — 재시도하면 성공할 수 있다.
+
+    타임아웃처럼 재시도 비용이 큰 실패는 일반 RuntimeError로 두어 즉시 폴백한다.
+    """
+
+
 def _coerce_traveler_count(value: object) -> int | None:
     if isinstance(value, bool):
         return None
@@ -161,10 +168,14 @@ class OpenAITripBriefClient:
             },
             method="POST",
         )
-        with request.urlopen(http_request, timeout=20) as response:
-            body = json.loads(response.read().decode("utf-8"))
-        text = self._extract_text(body)
-        data = json.loads(text)
+        try:
+            with request.urlopen(http_request, timeout=20) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            text = self._extract_text(body)
+            data = json.loads(text)
+        except (OSError, ValueError, RuntimeError) as exc:
+            # 네트워크 블립/JSON 파싱 실패는 일시적 — 재시도 대상으로 표시한다.
+            raise RetryableBriefError(f"OpenAI brief 추출 실패: {exc}") from exc
         return coerce_trip_brief(data, currency)
 
     def _extract_text(self, body: dict) -> str:
@@ -243,8 +254,13 @@ class CodexTripBriefClient:
         text = self._extract_message(result.stdout)
         if not text:
             detail = result.stderr.strip() or f"exit code {result.returncode}"
-            raise RuntimeError(f"Codex brief 응답을 읽지 못했습니다: {detail}")
-        data = self._parse_json_object(text)
+            # 빈 응답/비정상 종료는 일시적일 수 있어 재시도 대상으로 표시한다.
+            raise RetryableBriefError(f"Codex brief 응답을 읽지 못했습니다: {detail}")
+        try:
+            data = self._parse_json_object(text)
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            # JSON이 깨진 출력도 일시적 — 재시도하면 정상 JSON이 올 수 있다.
+            raise RetryableBriefError(f"Codex 응답 JSON 파싱 실패: {exc}") from exc
         return coerce_trip_brief(data, currency)
 
     def _build_command(self, workdir: str) -> list[str]:

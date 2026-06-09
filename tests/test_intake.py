@@ -119,3 +119,57 @@ def test_fallback_parser_without_history_unchanged() -> None:
     result = agent.run("삿포로 4박5일 여행", history=None)
     assert result.brief.destinations == ["Sapporo"]
     assert result.brief.duration_days == 5
+
+
+class _FlakyLLM:
+    """앞선 N번은 일시적 실패, 그 다음엔 성공하는 가짜 클라이언트."""
+
+    def __init__(self, fail_times: int, error: Exception) -> None:
+        self.fail_times = fail_times
+        self.error = error
+        self.calls = 0
+
+    def extract_trip_brief(self, message, currency, history=None):
+        from travel_agent.app.schemas.brief import TripBrief
+
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise self.error
+        return TripBrief(currency=currency, destinations=["Sapporo"])
+
+
+def test_llm_retries_transient_failure_and_stays_authoritative() -> None:
+    from travel_agent.app.agents.llm_client import RetryableBriefError
+
+    client = _FlakyLLM(fail_times=1, error=RetryableBriefError("빈 출력"))
+    agent = IntakeAgent(llm_client=client, enable_live_llm=True, llm_max_attempts=2)
+
+    result = agent.run("삿포로 가고싶어")
+
+    # 1차 일시 실패 → 2차 성공: 파서 폴백이 아니라 LLM 결과를 쓴다.
+    assert client.calls == 2
+    assert result.brief.destinations == ["Sapporo"]
+
+
+def test_llm_timeout_falls_back_immediately_without_retry() -> None:
+    # 타임아웃류(비싼 실패)는 재시도하지 않고 즉시 폴백(지연 폭증 방지).
+    client = _FlakyLLM(fail_times=99, error=TimeoutError("느림"))
+    agent = IntakeAgent(llm_client=client, enable_live_llm=True, llm_max_attempts=3)
+
+    result = agent.run("삿포로 4박5일", history=["삿포로 가고싶어"])
+
+    assert client.calls == 1  # 재시도 없음
+    # 폴백이지만 history 덕분에 목적지는 유지된다.
+    assert "Sapporo" in result.brief.destinations
+
+
+def test_llm_all_retries_fail_falls_back_with_history() -> None:
+    from travel_agent.app.agents.llm_client import RetryableBriefError
+
+    client = _FlakyLLM(fail_times=99, error=RetryableBriefError("계속 깨짐"))
+    agent = IntakeAgent(llm_client=client, enable_live_llm=True, llm_max_attempts=2)
+
+    result = agent.run("4박5일로", history=["삿포로 가고싶어"])
+
+    assert client.calls == 2  # 시도 횟수만큼만
+    assert "Sapporo" in result.brief.destinations  # 폴백도 history 누적

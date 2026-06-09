@@ -3,14 +3,25 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
-from travel_agent.app.agents.llm_client import LLMClient, StubLLMClient
+from travel_agent.app.agents.llm_client import (
+    LLMClient,
+    RetryableBriefError,
+    StubLLMClient,
+)
 from travel_agent.app.schemas.brief import IntakeResult, TripBrief
 
 
 class IntakeAgent:
-    def __init__(self, llm_client: LLMClient | None = None, enable_live_llm: bool = False) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        enable_live_llm: bool = False,
+        llm_max_attempts: int = 2,
+    ) -> None:
         self.llm_client = llm_client or StubLLMClient()
         self.enable_live_llm = enable_live_llm
+        # LLM을 주력으로 유지: 일시적 실패는 재시도하고, 비싼 타임아웃만 폴백한다.
+        self.llm_max_attempts = max(llm_max_attempts, 1)
 
     def run(
         self,
@@ -23,12 +34,8 @@ class IntakeAgent:
     ) -> IntakeResult:
         warnings: list[str] = []
         if self.enable_live_llm:
-            try:
-                extracted = self.llm_client.extract_trip_brief(
-                    message, currency, history=history
-                )
-            except Exception as exc:
-                warnings.append(f"요청 문장을 규칙 기반으로 정리했습니다: {exc}")
+            extracted = self._extract_with_llm_retry(message, currency, history, warnings)
+            if extracted is None:
                 extracted = self._fallback_parse_with_history(
                     message, currency, reference_year, history
                 )
@@ -40,6 +47,31 @@ class IntakeAgent:
         brief = self._merge_briefs(existing_brief, extracted) if existing_brief else extracted
         self._normalize_trip_dates(brief)
         return IntakeResult(brief=brief, questions=[], warnings=warnings)
+
+    def _extract_with_llm_retry(
+        self,
+        message: str,
+        currency: str,
+        history: list[str] | None,
+        warnings: list[str],
+    ) -> TripBrief | None:
+        """LLM 추출을 시도하되 일시적 실패는 재시도한다. 끝내 실패하면 None(→폴백).
+
+        - RetryableBriefError(빈 출력·JSON 깨짐 등): 남은 시도만큼 재시도(저렴).
+        - 그 외(타임아웃 등 비싼 실패): 즉시 중단하고 폴백(지연 폭증 방지).
+        """
+        last_exc: Exception | None = None
+        for _ in range(self.llm_max_attempts):
+            try:
+                return self.llm_client.extract_trip_brief(message, currency, history=history)
+            except RetryableBriefError as exc:
+                last_exc = exc
+                continue  # 일시적 실패 → 재시도
+            except Exception as exc:  # noqa: BLE001 - 타임아웃 등은 즉시 폴백
+                last_exc = exc
+                break
+        warnings.append(f"요청 문장을 규칙 기반으로 정리했습니다: {last_exc}")
+        return None
 
     def _normalize_trip_dates(self, brief: TripBrief) -> None:
         """기간(N박)이 명시되면 duration_nights를 맞추고, 종료일이 없으면 채운다.
