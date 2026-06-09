@@ -258,6 +258,17 @@ def _curate(
         else:
             over_budget_only = True
 
+    # 왕복 검색에서는 오는 편 시각이 없는 후보(구글 항공은 첫 화면에 가는 편만 노출)를
+    # 제외해 모든 카드가 가는 편·오는 편을 온전히 보여주게 한다. 단 그러면 후보가
+    # 0이 되는 경우엔 원래 풀을 유지한다(빈 결과 방지).
+    round_trip = brief.end_date is not None or (brief.duration_nights or 0) >= 1
+    if round_trip:
+        with_return = [
+            option for option in options if option.return_departure_time is not None
+        ]
+        if with_return:
+            options = with_return
+
     # 선호 시간대는 한글/영어 둘 다 인식한다. LLM이 transport_preference나 must_include에
     # "삿포로행 오전 출발, 인천행 오후 출발"처럼 자연어로 넣을 수 있다.
     pref = " ".join([brief.transport_preference or "", *brief.must_include]).lower()

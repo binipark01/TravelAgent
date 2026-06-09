@@ -464,7 +464,7 @@ def test_curate_diversifies_across_departure_dates() -> None:
     assert dates == {date(2026, 7, 5), date(2026, 7, 9), date(2026, 7, 11)}
 
 
-def _google_option(start: date, outbound: str, price: str) -> object:
+def _google_option(start: date, outbound: str, price: str, inbound: str | None = None) -> object:
     brief = TripBrief(
         origin="ICN",
         destinations=["Sapporo"],
@@ -480,10 +480,10 @@ def _google_option(start: date, outbound: str, price: str) -> object:
         airline="구글표시항공",
         outbound_departure=outbound,
         outbound_arrival="13:00 CTS",
-        inbound_departure=None,
-        inbound_arrival=None,
+        inbound_departure=inbound,
+        inbound_arrival="18:00 ICN" if inbound else None,
         outbound_duration="2시간 30분",
-        inbound_duration=None,
+        inbound_duration="2시간 30분" if inbound else None,
         price=price,
         stops="직항",
         source_url=links.google_url,
@@ -492,6 +492,36 @@ def _google_option(start: date, outbound: str, price: str) -> object:
     option = flight_candidate_to_option(candidate, links, "KRW")
     assert option is not None
     return option
+
+
+def test_curate_hides_options_without_return_leg_in_round_trip() -> None:
+    brief = TripBrief(
+        origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    naver = _option_on(date(2026, 7, 5), "09:00 ICN", "14:00 CTS", "왕복 550,000원")  # 오는 편 있음
+    google = _google_option(date(2026, 7, 6), "08:00 ICN", "₩500,000 왕복")  # 오는 편 없음
+
+    curated = _curate([google, naver], brief, limit=5)
+
+    # 왕복 검색: 오는 편 없는 구글 후보는 빠지고, 모든 카드가 오는 편을 갖는다.
+    assert naver in curated
+    assert google not in curated
+    assert all(option.return_departure_time is not None for option in curated)
+
+
+def test_curate_keeps_options_when_none_have_return_leg() -> None:
+    brief = TripBrief(
+        origin="ICN", destinations=["Sapporo"], start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 15), travelers=1, currency="KRW",
+    )
+    g1 = _google_option(date(2026, 7, 6), "08:00 ICN", "₩500,000 왕복")
+    g2 = _google_option(date(2026, 7, 10), "09:00 ICN", "₩520,000 왕복")
+
+    curated = _curate([g1, g2], brief, limit=5)
+
+    # 오는 편 가진 후보가 하나도 없으면 빈 결과 대신 전체를 유지한다.
+    assert len(curated) >= 1
 
 
 def test_curate_includes_both_sources() -> None:
@@ -509,14 +539,15 @@ def test_curate_includes_both_sources() -> None:
         _option_on(date(2026, 7, 11), "09:00 ICN", "14:00 CTS", "왕복 570,000원"),
     ]
     google = [
-        _google_option(date(2026, 7, 6), "08:00 ICN", "₩600,000 왕복"),
-        _google_option(date(2026, 7, 10), "08:00 ICN", "₩610,000 왕복"),
+        # 오는 편까지 갖춘(완전한 왕복) 구글 후보는 묻히지 않고 노출되어야 한다.
+        _google_option(date(2026, 7, 6), "08:00 ICN", "₩600,000 왕복", inbound="14:00 CTS"),
+        _google_option(date(2026, 7, 10), "08:00 ICN", "₩610,000 왕복", inbound="14:00 CTS"),
     ]
 
     curated = _curate(naver + google, brief, limit=4)
 
     providers = {option.metadata.source_ref.provider for option in curated}
-    # 네이버가 시간대 조건상 더 유리해도 구글이 묻히지 않고 둘 다 노출된다.
+    # 네이버가 시간대 조건상 더 유리해도 (완전한) 구글 후보가 묻히지 않고 둘 다 노출된다.
     assert "naver_flight" in providers
     assert "google_flights" in providers
 
