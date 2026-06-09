@@ -18,6 +18,7 @@ from travel_agent.app.agents.local_transport import LocalTransportAgent
 from travel_agent.app.agents.poi import RestaurantAgent
 from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
+from travel_agent.app.agents.safety import SafetyAgent
 from travel_agent.app.agents.transport import FlightAgent
 from travel_agent.app.agents.user_profile import UserProfileAgent
 from travel_agent.app.agents.visa import VisaAgent
@@ -75,6 +76,7 @@ class TravelSupervisorAgent:
         self.visa_agent = VisaAgent()
         self.local_transport_agent = LocalTransportAgent()
         self.fx_agent = FxAgent()
+        self.safety_agent = SafetyAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -250,6 +252,17 @@ class TravelSupervisorAgent:
                 else "환율 정보 없음"
             ),
         )
+        self._recorded_step(
+            recorder,
+            "SafetyAgent",
+            "안전·긴급 정보",
+            lambda: self.safety_agent.run(state),
+            lambda: (
+                f"{state.safety_info.destination_country} 안전 정보"
+                if state.safety_info
+                else "안전 정보 데이터 없음"
+            ),
+        )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
@@ -331,6 +344,7 @@ class TravelSupervisorAgent:
 
         self.budget_agent.run(state)
         self.fx_agent.run(state)
+        self.safety_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")
         self.critic_agent.run(state)
         blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]

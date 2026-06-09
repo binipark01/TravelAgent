@@ -21,6 +21,7 @@ from travel_agent.app.schemas.providers import (
     FxInfo,
     LocalTransportPlan,
     POIOption,
+    SafetyInfo,
     VisaCheckResult,
 )
 
@@ -53,6 +54,7 @@ class TripPlanState(StrictBaseModel):
     visa_result: VisaCheckResult | None = None
     local_transport: LocalTransportPlan | None = None
     fx_info: FxInfo | None = None
+    safety_info: SafetyInfo | None = None
     critic_findings: list[CriticFinding] = Field(default_factory=list)
     approval_requests: list[ApprovalRequest] = Field(default_factory=list)
     booking_records: list[BookingRecord] = Field(default_factory=list)
@@ -97,6 +99,7 @@ class FinalPlanResponse(StrictBaseModel):
     visa_result: VisaCheckResult | None = None
     local_transport: LocalTransportPlan | None = None
     fx_info: FxInfo | None = None
+    safety_info: SafetyInfo | None = None
     risk_findings: list[CriticFinding]
     critic_findings: list[CriticFinding]
     approval_requests: list[ApprovalRequest]

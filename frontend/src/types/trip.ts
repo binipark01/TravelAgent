@@ -101,6 +101,7 @@ export interface TripPlanState {
   visa_result?: VisaCheckResult | null
   local_transport?: LocalTransportPlan | null
   fx_info?: FxInfo | null
+  safety_info?: SafetyInfo | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -125,6 +126,23 @@ export interface LocalTransportPlan {
   airport_transfers: LocalTransportItem[]
   transit_passes: LocalTransportItem[]
   tips: string[]
+  source_url?: string | null
+}
+
+export interface EmergencyContact {
+  label: string
+  number: string
+}
+
+export interface SafetyInfo {
+  destination_country: string
+  summary: string
+  emergency_contacts: EmergencyContact[]
+  consular_call_center: string
+  embassy_note?: string | null
+  travel_advisory?: string | null
+  insurance_tips: string[]
+  local_cautions: string[]
   source_url?: string | null
 }
 

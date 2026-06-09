@@ -144,6 +144,24 @@ class LocalTransportPlan(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class EmergencyContact(StrictBaseModel):
+    label: str  # 예: 경찰
+    number: str  # 예: 110
+
+
+class SafetyInfo(StrictBaseModel):
+    destination_country: str
+    summary: str
+    emergency_contacts: list[EmergencyContact] = Field(default_factory=list)
+    consular_call_center: str = "영사콜센터 +82-2-3210-0404 (24시간)"
+    embassy_note: str | None = None
+    travel_advisory: str | None = None  # 외교부 여행경보 안내
+    insurance_tips: list[str] = Field(default_factory=list)
+    local_cautions: list[str] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class FxConversionRequest(StrictBaseModel):
     amount: float
     from_currency: str

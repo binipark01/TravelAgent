@@ -6,6 +6,7 @@ import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
+import { SafetyCard } from './SafetyCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
 import { VisaCard } from './VisaCard'
 
@@ -22,6 +23,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const visa = plan.visa_result ?? null
   const localTransport = plan.local_transport ?? null
   const fx = plan.fx_info ?? null
+  const safety = plan.safety_info ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -32,7 +34,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     hasItinerary ||
     visa != null ||
     localTransport != null ||
-    fx != null
+    fx != null ||
+    safety != null
   if (!hasAny) return null
 
   return (
@@ -51,6 +54,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {fx != null && <FxCard fx={fx} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
       {visa != null && <VisaCard visa={visa} />}
+      {safety != null && <SafetyCard safety={safety} />}
     </div>
   )
 }
