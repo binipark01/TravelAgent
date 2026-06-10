@@ -102,6 +102,7 @@ export interface TripPlanState {
   local_transport?: LocalTransportPlan | null
   fx_info?: FxInfo | null
   safety_info?: SafetyInfo | null
+  nearby_guide?: NearbyGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -126,6 +127,22 @@ export interface LocalTransportPlan {
   airport_transfers: LocalTransportItem[]
   transit_passes: LocalTransportItem[]
   tips: string[]
+  source_url?: string | null
+}
+
+export interface NearbyDestination {
+  name: string
+  travel_time: string
+  transport: string
+  highlights: string[]
+  best_for?: string | null
+  source_url?: string | null
+}
+
+export interface NearbyGuide {
+  hub: string
+  summary: string
+  destinations: NearbyDestination[]
   source_url?: string | null
 }
 

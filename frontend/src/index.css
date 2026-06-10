@@ -1925,6 +1925,64 @@ legend {
   font-weight: 600;
 }
 
+/* 근교 당일치기 카드 */
+.nearby-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.nearby-item {
+  padding: 10px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.nearby-item__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nearby-item__head strong {
+  font-size: 15px;
+}
+.nearby-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  white-space: nowrap;
+}
+.nearby-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.nearby-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text, inherit);
+}
+.nearby-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.nearby-tag {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent, #2563eb);
+}
+
 /* 안전 카드 */
 .safety-contacts {
   list-style: none;

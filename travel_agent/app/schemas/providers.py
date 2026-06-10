@@ -162,6 +162,23 @@ class SafetyInfo(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class NearbyDestination(StrictBaseModel):
+    name: str  # 예: 오타루
+    travel_time: str  # 예: JR 쾌속 약 35분
+    transport: str  # 예: JR 쾌속 에어포트 / 직행버스
+    highlights: list[str] = Field(default_factory=list)  # 운하, 오르골당
+    best_for: str | None = None  # 예: 반나절~하루
+    source_url: str | None = None
+
+
+class NearbyGuide(StrictBaseModel):
+    hub: str  # 기준 도시(삿포로)
+    summary: str
+    destinations: list[NearbyDestination] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class FxConversionRequest(StrictBaseModel):
     amount: float
     from_currency: str

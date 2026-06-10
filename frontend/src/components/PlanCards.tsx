@@ -4,6 +4,7 @@ import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
+import { NearbyCard } from './NearbyCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { SafetyCard } from './SafetyCard'
@@ -24,6 +25,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const localTransport = plan.local_transport ?? null
   const fx = plan.fx_info ?? null
   const safety = plan.safety_info ?? null
+  const nearby = plan.nearby_guide ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -35,7 +37,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     visa != null ||
     localTransport != null ||
     fx != null ||
-    safety != null
+    safety != null ||
+    nearby != null
   if (!hasAny) return null
 
   return (
@@ -53,6 +56,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {budget != null && <BudgetBreakdownCard budget={budget} />}
       {fx != null && <FxCard fx={fx} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
+      {nearby != null && <NearbyCard guide={nearby} />}
       {visa != null && <VisaCard visa={visa} />}
       {safety != null && <SafetyCard safety={safety} />}
     </div>

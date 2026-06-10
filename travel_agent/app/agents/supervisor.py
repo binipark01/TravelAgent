@@ -15,6 +15,7 @@ from travel_agent.app.agents.llm_client import (
     codex_brief_available,
 )
 from travel_agent.app.agents.local_transport import LocalTransportAgent
+from travel_agent.app.agents.nearby import NearbyAgent
 from travel_agent.app.agents.poi import RestaurantAgent
 from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
@@ -77,6 +78,7 @@ class TravelSupervisorAgent:
         self.local_transport_agent = LocalTransportAgent()
         self.fx_agent = FxAgent()
         self.safety_agent = SafetyAgent()
+        self.nearby_agent = NearbyAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -263,6 +265,17 @@ class TravelSupervisorAgent:
                 else "안전 정보 데이터 없음"
             ),
         )
+        self._recorded_step(
+            recorder,
+            "NearbyAgent",
+            "근교 당일치기 정리",
+            lambda: self.nearby_agent.run(state),
+            lambda: (
+                f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
+                if state.nearby_guide
+                else "근교 데이터 없음"
+            ),
+        )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
@@ -345,6 +358,7 @@ class TravelSupervisorAgent:
         self.budget_agent.run(state)
         self.fx_agent.run(state)
         self.safety_agent.run(state)
+        self.nearby_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")
         self.critic_agent.run(state)
         blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]
