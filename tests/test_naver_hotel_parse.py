@@ -253,6 +253,61 @@ def test_curate_labels_unverified_constraint_matches() -> None:
     assert not any("조식 여부 미확인" in n for n in goog.notes)
 
 
+def test_infer_area_and_location_query() -> None:
+    from travel_agent.app.connectors.accommodations.naver_hotel_browser import (
+        _infer_area,
+        _location_query,
+    )
+
+    assert _infer_area("그란벨 호텔 스스키노") == "스스키노"
+    assert _infer_area("호텔 포르자 삿포로 스테이션") == "역 인근"
+    assert _infer_area("더 놋 삿포로") is None
+    assert _location_query("삿포로 스스키노 근처 호텔") == "스스키노"
+    assert _location_query("역세권 호텔 찾아줘") == "역"
+    assert _location_query("위치 좋은 호텔") == "중심"
+    assert _location_query("그냥 호텔") is None
+
+
+def test_curate_ranks_requested_area_first() -> None:
+    def gh(name, amount, *, provider="naver_hotel", rating=8.6):
+        return hotel_to_option(
+            {"name": name, "amount": amount, "rating": rating, "source_url": "x"},
+            "Sapporo", 2, "KRW", provider=provider,
+        )
+
+    far = gh("더 놋 삿포로", 70_000)  # 지역 없음, 더 쌈
+    susukino = gh("그란벨 호텔 스스키노", 90_000)  # 스스키노, 더 비쌈
+
+    curated = _curate_hotels(
+        [far, susukino], max_nightly_price=None, limit=8, area_query="스스키노"
+    )
+
+    # 더 비싸도 요청 지역(스스키노)이 위로 오고, 지역 추론·칩이 붙는다.
+    assert curated[0].name == "그란벨 호텔 스스키노"
+    assert curated[0].location.area == "스스키노"
+    assert any("📍 스스키노" in n for n in curated[0].notes)
+
+
+def test_curate_ranks_verified_above_unverified() -> None:
+    def mk(name, amount, *, provider, star=None, rating=4.5, amenities=None):
+        raw = rating * 2 if provider == "naver_hotel" else rating
+        return hotel_to_option(
+            {"name": name, "amount": amount, "rating": raw, "star": star,
+             "reviews": None, "amenities": amenities or [], "source_url": "x"},
+            "Sapporo", 2, "KRW", provider=provider,
+        )
+
+    naver_unverified = mk("네이버 호텔", 80_000, provider="naver_hotel")  # 성급 None, 더 쌈
+    google_verified = mk("구글 호텔", 120_000, provider="google_hotel", star=4)  # 4성급
+
+    curated = _curate_hotels(
+        [naver_unverified, google_verified], max_nightly_price=None, limit=8, min_star=4
+    )
+
+    # 더 비싸도 '확인된' 4성급이 위로 온다.
+    assert curated[0].name == "구글 호텔"
+
+
 def test_curate_hotels_dedupes_same_name_keeps_cheaper() -> None:
     naver = _g_hotel("베셀 호텔 캄파나", 126_000)
     google = _g_hotel("베셀호텔 캄파나", 121_000, provider="google_hotel", rating=4.5)

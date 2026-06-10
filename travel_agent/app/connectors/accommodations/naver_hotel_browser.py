@@ -147,6 +147,54 @@ def _require_breakfast(text: str | None) -> bool:
     return "조식" in (text or "")
 
 
+# 호텔에 좌표가 없어(네이버·구글 모두 미제공) 도보거리는 못 구한다. 대신 호텔명에서
+# 지역/역을 추론해 위치 필터·표시에 쓴다. 도시별 핵심 지역(이름에 자주 포함됨).
+_AREA_KEYWORDS = (
+    # 삿포로
+    "스스키노", "오도리", "타누키코지", "삿포로역", "나카지마공원", "마루야마", "신삿포로",
+    # 도쿄
+    "신주쿠", "시부야", "긴자", "우에노", "아사쿠사", "이케부쿠로", "시나가와", "롯폰기",
+    # 오사카
+    "난바", "우메다", "신사이바시", "도톤보리", "텐노지",
+    # 교토/타이베이
+    "기온", "교토역", "가와라마치", "시먼딩", "타이베이역",
+)
+
+
+def _infer_area(name: str) -> str | None:
+    """호텔명에서 지역/역을 추론한다. 특정 지역명 우선, 없으면 '역 인근'."""
+    for keyword in _AREA_KEYWORDS:
+        if keyword in name:
+            return keyword
+    low = name.lower()
+    if "스테이션" in name or "station" in low or name.rstrip().endswith("역"):
+        return "역 인근"
+    return None
+
+
+def _location_query(text: str | None) -> str | None:
+    """요청에서 원하는 위치를 뽑는다: 특정 지역명 / '역'(역세권) / '중심'(번화가) / None."""
+    if not text:
+        return None
+    for keyword in _AREA_KEYWORDS:
+        if keyword in text:
+            return keyword
+    if any(token in text for token in ("역 근처", "역세권", "역 가까", "스테이션", "station")):
+        return "역"
+    if any(token in text for token in ("위치 좋", "위치좋", "중심", "시내", "번화가")):
+        return "중심"
+    return None
+
+
+def _area_matches(option: AccommodationOption, area_query: str) -> bool:
+    area = option.location.area
+    if area_query == "역":
+        return bool(area and "역" in area)  # '삿포로역' · '역 인근'
+    if area_query == "중심":
+        return area is not None  # 인식되는 지역명이 이름에 있으면 중심가로 간주
+    return area_query in option.name
+
+
 def extract_live_accommodation_options(
     destination: str,
     *,
@@ -200,6 +248,7 @@ def extract_live_accommodation_options(
         min_star=_min_star(request_text),
         min_rating=_min_rating(request_text),
         require_breakfast=_require_breakfast(request_text),
+        area_query=_location_query(request_text),
     )
 
     # 침대 선호(트윈/더블)가 있으면 상위 후보를 호텔별로 딥체크해 객실 유무를 표시한다.
@@ -225,18 +274,22 @@ def _curate_hotels(
     min_star: int | None = None,
     min_rating: float | None = None,
     require_breakfast: bool = False,
+    area_query: str | None = None,
 ) -> list[AccommodationOption]:
-    """예산(1박 상한)·성급·평점·조식·소스 다양성을 함께 보고 숙소를 추려서 정리한다.
+    """예산(1박 상한)·성급·평점·조식·위치·소스 다양성을 함께 보고 숙소를 추려서 정리한다.
 
     명시 조건(N성급 이상/평점 N 이상/조식)을 먼저 거른다. 정보가 없는 숙소는 확인 불가라
-    제외하지 않고 남긴다. 같은 호텔이 두 소스에 모두 나오면 더 싼 쪽만 남기고, 예산 이내를
-    우선한 뒤 네이버·구글이 둘 다 노출되도록 번갈아 담는다.
+    제외하지 않고 남긴다. 위치 요청(area_query)이 있으면 해당 지역 숙소를, 명시 조건이
+    있으면 '확인된' 숙소를 위로 올린다(제외하진 않음). 같은 호텔이 두 소스에 모두 나오면
+    더 싼 쪽만 남기고, 네이버·구글이 둘 다 노출되도록 번갈아 담는다.
     """
     if not options:
         return []
     options = _dedupe_hotels(options)
     options = _apply_hotel_filters(options, min_star, min_rating, require_breakfast)
-    options.sort(key=lambda option: option.nightly_price.amount or 10**12)
+    # 좌표가 없어 도보거리는 못 구하니 호텔명에서 지역/역을 추론해 둔다(필터·표시용).
+    for option in options:
+        option.location.area = _infer_area(option.name)
 
     over_budget_only = False
     if max_nightly_price:
@@ -250,32 +303,55 @@ def _curate_hotels(
         else:
             over_budget_only = True
 
-    # 소스(네이버·구글)별로 묶어 번갈아 담아 한쪽만 나오지 않게 한다.
+    def _unverified(option: AccommodationOption) -> int:
+        """명시 조건 대비 '확인 불가' 항목 수(작을수록 위)."""
+        miss = 0
+        if min_star and option.star_rating is None:
+            miss += 1
+        if min_rating and option.rating is None:
+            miss += 1
+        if require_breakfast and not _has_breakfast(option.amenities):
+            miss += 1
+        return miss
+
+    def _rank(option: AccommodationOption) -> tuple[int, int, float]:
+        # 위치 일치 > 조건 확인됨 > 저렴한 순.
+        area_miss = 0 if (area_query and _area_matches(option, area_query)) else (
+            1 if area_query else 0
+        )
+        return (area_miss, _unverified(option), option.nightly_price.amount or 10**12)
+
+    area_hit = bool(area_query) and any(_area_matches(o, area_query) for o in options)
+
+    # 소스(네이버·구글)별로 묶어 _rank 순으로 정렬한 뒤 번갈아 담아 한쪽만 나오지 않게 한다.
     by_provider: dict[str, list[AccommodationOption]] = {}
     for option in options:
         by_provider.setdefault(option.metadata.source_ref.provider, []).append(option)
     provider_order = sorted(
         by_provider, key=lambda p: (p != "naver_hotel", p != "google_hotel", p)
     )
-    ranked = [
-        sorted(by_provider[p], key=lambda o: o.nightly_price.amount or 10**12)
-        for p in provider_order
-    ]
+    ranked = [sorted(by_provider[p], key=_rank) for p in provider_order]
     curated = _round_robin_hotels(ranked, limit)
-    curated.sort(key=lambda option: option.nightly_price.amount or 10**12)
     if not curated:
         return []
+    cheapest = min(curated, key=lambda o: o.nightly_price.amount or 10**12)
+    curated.sort(key=_rank)  # 표시 순서: 위치>확인>가격
 
-    cheapest = curated[0]
     cap_label = f"{max_nightly_price // 10000}만원" if max_nightly_price else None
     for option in curated:
         tags: list[str] = []
         if option is cheapest:
             tags.append("💰 최저가")
+        if option.location.area:
+            tags.append(f"📍 {option.location.area}")
         if max_nightly_price and (option.nightly_price.amount or 0) <= max_nightly_price:
             tags.append(f"✅ 1박 {cap_label} 이내")
         if over_budget_only and option is cheapest:
             tags.append(f"⚠️ 1박 {cap_label} 이내 숙소가 없어 가장 저렴한 순")
+        # 위치 요청 지역을 못 찾은 경우(가장 위 항목에만) 안내.
+        specific_area = area_query not in (None, "역", "중심")
+        if specific_area and not area_hit and option is curated[0]:
+            tags.append(f"⚠️ '{area_query}' 인근 숙소를 찾지 못해 전체 표시")
         # 명시 조건을 걸었지만 그 숙소의 해당 정보가 없어 '확인 불가'로 통과시킨 경우,
         # 충족된 것처럼 오해하지 않도록 라벨을 단다(주로 네이버: 성급·편의시설 미제공).
         if min_star and option.star_rating is None:
