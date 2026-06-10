@@ -224,6 +224,35 @@ def test_hotel_constraint_filters() -> None:
     assert h3 not in kept
 
 
+def test_curate_labels_unverified_constraint_matches() -> None:
+    # 명시 조건(4성급+조식)을 걸었을 때, 데이터가 없어 '확인 불가'로 통과된 숙소엔
+    # 충족된 것처럼 오해하지 않도록 라벨이 붙어야 한다.
+    def gh(name, amount, *, provider, star=None, rating=4.6, amenities=None):
+        raw = rating * 2 if provider == "naver_hotel" else rating
+        return hotel_to_option(
+            {"name": name, "amount": amount, "rating": raw, "star": star,
+             "reviews": None, "amenities": amenities or [], "source_url": "x"},
+            "Sapporo", 2, "KRW", provider=provider,
+        )
+
+    naver = gh("네이버호텔", 80_000, provider="naver_hotel")  # 성급 None, 편의시설 없음
+    google = gh("구글호텔", 120_000, provider="google_hotel", star=4, amenities=["레스토랑"])
+
+    curated = _curate_hotels(
+        [naver, google], max_nightly_price=None, limit=8,
+        min_star=4, require_breakfast=True,
+    )
+    nav = next(o for o in curated if o.name == "네이버호텔")
+    goog = next(o for o in curated if o.name == "구글호텔")
+
+    # 네이버: 성급·조식 정보가 없어 '미확인' 라벨이 붙는다.
+    assert any("성급 미표기" in n for n in nav.notes)
+    assert any("조식 여부 미확인" in n for n in nav.notes)
+    # 구글: 4성급 + 레스토랑이라 라벨이 붙지 않는다.
+    assert not any("성급 미표기" in n for n in goog.notes)
+    assert not any("조식 여부 미확인" in n for n in goog.notes)
+
+
 def test_curate_hotels_dedupes_same_name_keeps_cheaper() -> None:
     naver = _g_hotel("베셀 호텔 캄파나", 126_000)
     google = _g_hotel("베셀호텔 캄파나", 121_000, provider="google_hotel", rating=4.5)

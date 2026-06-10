@@ -276,6 +276,14 @@ def _curate_hotels(
             tags.append(f"✅ 1박 {cap_label} 이내")
         if over_budget_only and option is cheapest:
             tags.append(f"⚠️ 1박 {cap_label} 이내 숙소가 없어 가장 저렴한 순")
+        # 명시 조건을 걸었지만 그 숙소의 해당 정보가 없어 '확인 불가'로 통과시킨 경우,
+        # 충족된 것처럼 오해하지 않도록 라벨을 단다(주로 네이버: 성급·편의시설 미제공).
+        if min_star and option.star_rating is None:
+            tags.append("ℹ️ 성급 미표기(확인 필요)")
+        if min_rating and option.rating is None:
+            tags.append("ℹ️ 평점 미표기(확인 필요)")
+        if require_breakfast and not _has_breakfast(option.amenities):
+            tags.append("ℹ️ 조식 여부 미확인")
         if tags:
             option.notes.insert(0, " · ".join(tags))
     return curated
