@@ -179,6 +179,37 @@ class NearbyGuide(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class BookingPlatform(StrictBaseModel):
+    name: str  # 예: 12Go Asia
+    url: str  # 딥링크(검색/랜딩)
+    covers: str  # 예: 기차·버스·페리
+    note: str | None = None  # 공식/제휴 등 부가 안내
+
+
+class RouteLink(StrictBaseModel):
+    label: str  # 예: 삿포로 → 오타루
+    maps_url: str  # 구글맵스 대중교통 경로(키 불필요)
+    booking_url: str | None = None  # 멀티모달 비교(Rome2Rio 등)
+
+
+class PassSuggestion(StrictBaseModel):
+    name: str  # 예: JR 패스
+    url: str
+    note: str  # 손익분기는 단정하지 않고 '현재 요금 비교 권장'
+
+
+class TransportTicketGuide(StrictBaseModel):
+    destination_country: str
+    summary: str
+    platforms: list[BookingPlatform] = Field(default_factory=list)
+    pass_suggestion: PassSuggestion | None = None
+    route_links: list[RouteLink] = Field(default_factory=list)
+    source_note: str = (
+        "딥링크는 예매/조회 시작점입니다. 현재 요금·시간표는 각 사이트에서 확인하세요."
+    )
+    metadata: ProviderMetadata
+
+
 class FxConversionRequest(StrictBaseModel):
     amount: float
     from_currency: str

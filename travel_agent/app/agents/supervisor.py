@@ -21,6 +21,7 @@ from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
 from travel_agent.app.agents.safety import SafetyAgent
 from travel_agent.app.agents.transport import FlightAgent
+from travel_agent.app.agents.transport_tickets import TransportTicketsAgent
 from travel_agent.app.agents.user_profile import UserProfileAgent
 from travel_agent.app.agents.visa import VisaAgent
 from travel_agent.app.orchestration.agent_recorder import AgentRunRecorder
@@ -79,6 +80,7 @@ class TravelSupervisorAgent:
         self.fx_agent = FxAgent()
         self.safety_agent = SafetyAgent()
         self.nearby_agent = NearbyAgent()
+        self.transport_tickets_agent = TransportTicketsAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
         self.presentation_agent = PresentationAgent()
@@ -290,6 +292,17 @@ class TravelSupervisorAgent:
                 else "근교 데이터 없음"
             ),
         )
+        self._recorded_step(
+            recorder,
+            "TransportTicketsAgent",
+            "교통권 예매·경로 정리",
+            lambda: self.transport_tickets_agent.run(state),
+            lambda: (
+                f"{len(state.transport_tickets.platforms)}개 예매처"
+                if state.transport_tickets
+                else "교통권 데이터 없음"
+            ),
+        )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
@@ -430,6 +443,7 @@ class TravelSupervisorAgent:
         self.fx_agent.run(state)
         self.safety_agent.run(state)
         self.nearby_agent.run(state)
+        self.transport_tickets_agent.run(state)
         set_status(state, TripStatus.validating, "Validation stage started.")
         self.critic_agent.run(state)
         blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]

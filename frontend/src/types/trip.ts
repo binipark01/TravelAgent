@@ -103,6 +103,7 @@ export interface TripPlanState {
   fx_info?: FxInfo | null
   safety_info?: SafetyInfo | null
   nearby_guide?: NearbyGuide | null
+  transport_tickets?: TransportTicketGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
   approval_requests: ApprovalRequest[]
@@ -128,6 +129,34 @@ export interface LocalTransportPlan {
   transit_passes: LocalTransportItem[]
   tips: string[]
   source_url?: string | null
+}
+
+export interface BookingPlatform {
+  name: string
+  url: string
+  covers: string
+  note?: string | null
+}
+
+export interface RouteLink {
+  label: string
+  maps_url: string
+  booking_url?: string | null
+}
+
+export interface PassSuggestion {
+  name: string
+  url: string
+  note: string
+}
+
+export interface TransportTicketGuide {
+  destination_country: string
+  summary: string
+  platforms: BookingPlatform[]
+  pass_suggestion?: PassSuggestion | null
+  route_links: RouteLink[]
+  source_note: string
 }
 
 export interface NearbyDestination {

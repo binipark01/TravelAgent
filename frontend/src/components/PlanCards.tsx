@@ -8,6 +8,7 @@ import { NearbyCard } from './NearbyCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { SafetyCard } from './SafetyCard'
+import { TransportTicketsCard } from './TransportTicketsCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
 import { VisaCard } from './VisaCard'
 
@@ -26,6 +27,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const fx = plan.fx_info ?? null
   const safety = plan.safety_info ?? null
   const nearby = plan.nearby_guide ?? null
+  const tickets = plan.transport_tickets ?? null
 
   const hasAny =
     flights.length > 0 ||
@@ -38,7 +40,8 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     localTransport != null ||
     fx != null ||
     safety != null ||
-    nearby != null
+    nearby != null ||
+    tickets != null
   if (!hasAny) return null
 
   return (
@@ -56,6 +59,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {budget != null && <BudgetBreakdownCard budget={budget} />}
       {fx != null && <FxCard fx={fx} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
+      {tickets != null && <TransportTicketsCard guide={tickets} />}
       {nearby != null && <NearbyCard guide={nearby} />}
       {visa != null && <VisaCard visa={visa} />}
       {safety != null && <SafetyCard safety={safety} />}

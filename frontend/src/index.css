@@ -1983,6 +1983,80 @@ legend {
   color: var(--accent, #2563eb);
 }
 
+/* 교통권 카드 */
+.pass-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  border-radius: 10px;
+  background: rgba(234, 179, 8, 0.12);
+  text-decoration: none;
+  color: inherit;
+}
+.pass-banner strong {
+  color: #a16207;
+}
+.pass-banner span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ticket-route-list,
+.ticket-platform-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ticket-route {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.ticket-route__label {
+  font-size: 14px;
+  min-width: 0;
+}
+.ticket-route__links {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ticket-route__links a,
+.ticket-platform-list a {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ticket-platform-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.ticket-platform__covers {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ticket-platform__note {
+  font-size: 11px;
+  color: var(--accent, #2563eb);
+  background: rgba(37, 99, 235, 0.1);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 /* 안전 카드 */
 .safety-contacts {
   list-style: none;
