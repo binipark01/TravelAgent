@@ -40,13 +40,15 @@ class RouteAgent:
         )
         days_count = max(days_count, 1)
 
-        attractions = state.activity_options or state.poi_candidates
+        # 대화형 수정: '빼줘/제외'(must_avoid)·'넣어줘'(must_include)·페이스를 반영한다.
+        # 매 턴이 새 run이라도 이 제약들은 history로 누적돼 일정에 계속 적용된다.
+        attractions = self._apply_edits(state.activity_options or state.poi_candidates, brief)
+        restaurants = self._apply_edits(state.poi_candidates, brief)
         ordered = self._order_pois_by_area(attractions)
-        per_day = min(3, max(1, ceil(len(ordered) / days_count))) if ordered else 0
+        per_day = self._per_day(brief, ordered, days_count)
         chunks = (
             [ordered[i : i + per_day] for i in range(0, len(ordered), per_day)] if per_day else []
         )
-        restaurants = state.poi_candidates
 
         day_plans: list[DayPlan] = []
         for day_number in range(1, days_count + 1):
@@ -83,6 +85,46 @@ class RouteAgent:
             if day.date and day.date in weather:
                 day.weather = weather[day.date]
 
+    def _apply_edits(self, pois: list[POIOption], brief) -> list[POIOption]:
+        """대화형 수정 반영: must_avoid는 제외, must_include는 앞으로 올린다(부분일치)."""
+        avoid = [
+            token.strip().lower()
+            for token in (brief.must_avoid or [])
+            if token and token.strip().lower() not in ("overpacked days",)
+        ]
+        if avoid:
+            pois = [
+                poi
+                for poi in pois
+                if not any(
+                    token in poi.title.lower() or token in (poi.type or "").lower()
+                    for token in avoid
+                )
+            ]
+        include = [token.strip().lower() for token in (brief.must_include or []) if token.strip()]
+        if include:
+            pois = sorted(
+                pois,
+                key=lambda poi: 0
+                if any(
+                    token in poi.title.lower() or token in (poi.type or "").lower()
+                    for token in include
+                )
+                else 1,
+            )
+        return pois
+
+    def _per_day(self, brief, ordered: list[POIOption], days_count: int) -> int:
+        """페이스에 따라 하루 방문지 수를 정한다. 여유=적게, 빡빡=많이."""
+        if not ordered:
+            return 0
+        base = min(3, max(1, ceil(len(ordered) / days_count)))
+        if brief.pace == "relaxed":
+            return max(1, min(base, 2))
+        if brief.pace == "packed":
+            return min(4, base + 1)
+        return base
+
     def _order_pois_by_area(self, pois: list[POIOption]) -> list[POIOption]:
         grouped: dict[str, list[POIOption]] = defaultdict(list)
         for poi in pois:
@@ -105,8 +147,8 @@ class RouteAgent:
     ) -> DayPlan:
         area = pois[0].area if pois else None
         day = DayPlan(day=day_number, date=day_date, area=area)
-        start_slots = [time(10, 0), time(14, 0), time(16, 30)]
-        for index, poi in enumerate(pois[:3]):
+        start_slots = [time(10, 0), time(13, 30), time(15, 30), time(17, 0)]
+        for index, poi in enumerate(pois[: len(start_slots)]):
             start_time = start_slots[index]
             end_time = self._add_minutes(start_time, min(poi.recommended_duration_minutes, 120))
             day.items.append(

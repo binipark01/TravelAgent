@@ -155,9 +155,7 @@ class IntakeAgent:
         brief.transport_preference = self._parse_transport_preference(text)
         brief.passport_country = self._parse_passport_country(text)
         brief.must_include = self._parse_must_include(text)
-        brief.must_avoid = (
-            ["overpacked days"] if any(token in text for token in ["무리", "빡세"]) else []
-        )
+        brief.must_avoid = self._parse_must_avoid(text)
         brief.assumptions = self._assumptions(brief, text)
         if default_origin_assumption:
             brief.assumptions.append("출발지가 없어 서울 출발 기준으로 항공 후보를 조회합니다.")
@@ -345,6 +343,18 @@ class IntakeAgent:
             if token in text:
                 includes.append(value)
         return includes
+
+    def _parse_must_avoid(self, text: str) -> list[str]:
+        """대화형 수정: '무리/빡세'(과밀)와 'X 빼줘/제외/말고/싫어'의 X를 모은다."""
+        avoid: list[str] = []
+        if any(token in text for token in ["무리", "빡세"]):
+            avoid.append("overpacked days")
+        # "오타루 빼줘", "박물관은 빼고", "미술관 말고", "온천 싫어"의 앞 단어를 잡는다.
+        for match in re.finditer(r"([가-힣A-Za-z]{2,})\s*(?:빼|제외|말고|싫|건너)", text):
+            token = re.sub(r"(?:은|는|이|가|을|를|도)$", "", match.group(1))
+            if len(token) >= 2 and token not in avoid:
+                avoid.append(token)
+        return avoid
 
     def _merge_briefs(self, old: TripBrief | None, new: TripBrief) -> TripBrief:
         if old is None:
