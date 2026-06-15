@@ -1,11 +1,11 @@
 import { useMutation } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Hotel, Plane, Plus, SearchCheck } from 'lucide-react'
 import { Fragment, useEffect, useState } from 'react'
-import { createAgentRun } from '../api/agent'
+import { addAgentRunMessage, createAgentRun } from '../api/agent'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
 import { PlanCards } from '../components/PlanCards'
-import type { AgentRunResponse } from '../types/agent'
+import type { AgentRunDetailResponse, AgentRunResponse } from '../types/agent'
 import type { LLMAnswerRequest } from '../types/llm'
 import { agentDisplayLabel } from '../utils/agentDisplay'
 import {
@@ -36,6 +36,22 @@ function nextTurnId(): string {
   return `turn_${Date.now()}_${Math.round(Math.random() * 1e6)}`
 }
 
+/** 이어가기 응답(detail)을 첫 응답(AgentRunResponse)과 같은 형태로 맞춘다. */
+function adaptDetail(detail: AgentRunDetailResponse): AgentRunResponse {
+  return {
+    trip_id: detail.run.trip_id,
+    run_id: detail.run.run_id,
+    status: detail.run.status,
+    current_step: detail.run.current_step,
+    steps: detail.steps,
+    missing_fields: detail.state_summary.missing_fields,
+    questions: [],
+    state_summary: detail.state_summary,
+    partial_plan: detail.state,
+    events: detail.events,
+  }
+}
+
 /** 응답에서 실시간(is_mock=false) 후보만 골라낸다. mock은 화면에 표시하지 않는다. */
 function realOptions(data: AgentRunResponse) {
   const plan = data.partial_plan
@@ -53,25 +69,41 @@ function realOptions(data: AgentRunResponse) {
 
 export function HomePage() {
   const [turns, setTurns] = useState<ChatTurn[]>([])
-  const mutation = useMutation({ mutationFn: createAgentRun })
+  // 같은 세션의 run을 이어가 일정·후보가 턴 사이에 유지되게 한다(상태 영속).
+  const [runId, setRunId] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: async (vars: {
+      payload: LLMAnswerRequest
+      turnId: string
+    }): Promise<AgentRunResponse> => {
+      if (runId) {
+        // 이어가기 턴: 같은 run에 메시지 추가 → 백엔드가 기존 상태에 델타만 반영.
+        const detail = await addAgentRunMessage(runId, { message: vars.payload.message })
+        return adaptDetail(detail)
+      }
+      // 첫 턴: 새 run 시작.
+      const history = turns.map((turn) => turn.message)
+      return createAgentRun({ ...vars.payload, history })
+    },
+    onSuccess: (data, vars) => {
+      if (data.run_id) setRunId(data.run_id)
+      setTurns((prev) =>
+        prev.map((turn) => (turn.id === vars.turnId ? { ...turn, response: data } : turn)),
+      )
+    },
+    onError: (error, vars) =>
+      setTurns((prev) =>
+        prev.map((turn) =>
+          turn.id === vars.turnId ? { ...turn, error: errorMessage(error) } : turn,
+        ),
+      ),
+  })
 
   function handleSubmit(payload: LLMAnswerRequest) {
     const turnId = nextTurnId()
-    // 직전까지의 사용자 메시지를 대화 문맥으로 함께 보낸다(현재 메시지 제외).
-    const history = turns.map((turn) => turn.message)
     setTurns((prev) => [...prev, { id: turnId, message: payload.message }])
-    mutation.mutate({ ...payload, history }, {
-      onSuccess: (data) =>
-        setTurns((prev) =>
-          prev.map((turn) => (turn.id === turnId ? { ...turn, response: data } : turn)),
-        ),
-      onError: (error) =>
-        setTurns((prev) =>
-          prev.map((turn) =>
-            turn.id === turnId ? { ...turn, error: errorMessage(error) } : turn,
-          ),
-        ),
-    })
+    mutation.mutate({ payload, turnId })
   }
 
   // 인스펙터(오른쪽)는 가장 최근에 '완료된' 응답을 기준으로 보여준다.

@@ -41,6 +41,7 @@ class AgentEventType(StrEnum):
     evidence_normalized = "evidence_normalized"
     evidence_ranked = "evidence_ranked"
     core_plan_decided = "core_plan_decided"
+    search_reused = "search_reused"
     missing_info_detected = "missing_info_detected"
     critic_blocker_found = "critic_blocker_found"
     approval_required = "approval_required"

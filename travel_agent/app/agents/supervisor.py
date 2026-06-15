@@ -156,6 +156,10 @@ class TravelSupervisorAgent:
         # 코어 오케스트레이터가 요청에 맞는 서브에이전트 집합을 동적으로 선택한다.
         plan = self.core_planner.plan(state)
         selected = self._expand_dependencies(plan.agents)
+        # 이어가기 턴(이미 결과가 있음): 편집/제약이 항상 재반영되도록 일정·예산을 강제
+        # 재구성하고, 검색 도메인은 입력이 바뀐 경우에만 다시 검색한다(아래 _needs_search).
+        if self._has_prior_results(state):
+            selected = self._expand_dependencies([*selected, "route", "budget"])
         if recorder:
             recorder.event(
                 "core_plan_decided",
@@ -166,37 +170,47 @@ class TravelSupervisorAgent:
 
         set_status(state, TripStatus.drafting, "Agent itinerary stage started.")
         if "flight" in selected:
-            self._recorded_step(
-                recorder,
-                "FlightAgent",
-                "항공/이동 후보 탐색",
-                lambda: self.flight_agent.run(state),
-                lambda: f"{len(state.transport_options)}개 항공/이동 후보",
-                [{"tool": "FlightProvider.search_flights", "count": len(state.transport_options)}],
-            )
+            if self._needs_search(state, "flight", bool(state.transport_options)):
+                self._recorded_step(
+                    recorder,
+                    "FlightAgent",
+                    "항공/이동 후보 탐색",
+                    lambda: self.flight_agent.run(state),
+                    lambda: f"{len(state.transport_options)}개 항공/이동 후보",
+                    [{"tool": "FlightProvider.search_flights",
+                      "count": len(state.transport_options)}],
+                )
+            else:
+                self._emit_reused(recorder, "항공", len(state.transport_options))
         if "accommodation" in selected:
-            self._recorded_step(
-                recorder,
-                "AccommodationAgent",
-                "숙소 후보 탐색",
-                lambda: self.accommodation_agent.run(state),
-                lambda: f"{len(state.accommodation_options)}개 숙소 후보",
-                [
-                    {
-                        "tool": "AccommodationSearchTool.search",
-                        "count": len(state.accommodation_options),
-                    }
-                ],
-            )
+            if self._needs_search(state, "accommodation", bool(state.accommodation_options)):
+                self._recorded_step(
+                    recorder,
+                    "AccommodationAgent",
+                    "숙소 후보 탐색",
+                    lambda: self.accommodation_agent.run(state),
+                    lambda: f"{len(state.accommodation_options)}개 숙소 후보",
+                    [
+                        {
+                            "tool": "AccommodationSearchTool.search",
+                            "count": len(state.accommodation_options),
+                        }
+                    ],
+                )
+            else:
+                self._emit_reused(recorder, "숙소", len(state.accommodation_options))
         if "restaurant" in selected:
-            self._recorded_step(
-                recorder,
-                "RestaurantAgent",
-                "맛집/쇼핑/체험 후보 탐색",
-                lambda: self.restaurant_agent.run(state),
-                lambda: f"{len(state.poi_candidates)}개 후보",
-                [{"tool": "PlacesProvider.search_pois", "count": len(state.poi_candidates)}],
-            )
+            if self._needs_search(state, "restaurant", bool(state.poi_candidates)):
+                self._recorded_step(
+                    recorder,
+                    "RestaurantAgent",
+                    "맛집/쇼핑/체험 후보 탐색",
+                    lambda: self.restaurant_agent.run(state),
+                    lambda: f"{len(state.poi_candidates)}개 후보",
+                    [{"tool": "PlacesProvider.search_pois", "count": len(state.poi_candidates)}],
+                )
+            else:
+                self._emit_reused(recorder, "맛집/관광", len(state.poi_candidates))
         if "route" in selected:
             self._recorded_step(
                 recorder,
@@ -325,6 +339,63 @@ class TravelSupervisorAgent:
             brief.end_date = brief.start_date + timedelta(days=days - 1)
             brief.duration_days = days
             brief.duration_nights = max(days - 1, 0)
+
+    def _has_prior_results(self, state: TripPlanState) -> bool:
+        """이어가기 턴인지(이미 검색/일정 결과가 있는지) 판단한다."""
+        return bool(
+            state.transport_options
+            or state.accommodation_options
+            or state.poi_candidates
+            or state.activity_options
+            or state.optimized_itinerary
+        )
+
+    def _domain_sig(self, state: TripPlanState, domain: str) -> str:
+        """도메인별 '검색 입력' 서명. 이게 같으면 재검색 없이 기존 결과를 재사용한다.
+
+        편집 신호(must_avoid·pace)는 서명에 넣지 않는다 → 편집은 재검색을 유발하지
+        않고 RouteAgent가 기존 후보에 적용한다. 반대로 맛집 위주(must_include)·직항
+        (transport_preference) 등 검색 결과를 바꾸는 변경은 서명이 바뀌어 재검색된다.
+        """
+        brief = state.brief
+        if not brief:
+            return ""
+        destination = state.selected_destination or (
+            brief.destinations[0] if brief.destinations else None
+        )
+
+        def join(*parts) -> str:
+            return "|".join("" if part is None else str(part) for part in parts)
+
+        if domain == "flight":
+            return join(
+                brief.origin, destination, brief.start_date, brief.end_date,
+                brief.travelers, brief.transport_preference,
+            )
+        if domain == "accommodation":
+            return join(
+                destination, brief.start_date, brief.end_date, brief.travelers,
+                brief.accommodation_preference, brief.budget_per_person, brief.budget_total,
+            )
+        if domain == "restaurant":
+            return join(destination, tuple(sorted(brief.must_include or [])))
+        return ""
+
+    def _needs_search(self, state: TripPlanState, domain: str, have_results: bool) -> bool:
+        """검색 입력이 바뀌었거나 아직 결과가 없으면 True(재검색), 아니면 False(재사용)."""
+        sig = self._domain_sig(state, domain)
+        key = f"{domain}_sig"
+        changed = state.constraints.get(key) != sig
+        state.constraints[key] = sig
+        return changed or not have_results
+
+    def _emit_reused(self, recorder: AgentRunRecorder | None, label: str, count: int) -> None:
+        if recorder:
+            recorder.event(
+                "search_reused",
+                f"{label} 후보를 이전 결과에서 재사용했습니다(입력 변경 없음).",
+                {"count": count},
+            )
 
     def _expand_dependencies(self, agents: list[str]) -> list[str]:
         """선택된 capability에 필요한 선행 작업을 보강하고 의존성 안전 순서로 정렬한다."""
