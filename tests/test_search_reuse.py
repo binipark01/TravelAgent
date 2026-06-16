@@ -61,3 +61,23 @@ def test_has_prior_results_detects_continuation() -> None:
     assert sup._has_prior_results(state) is False
     state.poi_candidates = ["dummy"]  # 결과 존재 → 이어가기 턴
     assert sup._has_prior_results(state) is True
+
+
+def test_focused_plan_scopes_single_domain() -> None:
+    from travel_agent.app.agents.core_planner import CorePlannerAgent
+    from travel_agent.app.schemas.brief import TripBrief
+
+    planner = CorePlannerAgent(enabled=False)
+
+    def plan_for(msg, pref=None):
+        brief = TripBrief(currency="KRW", transport_preference=pref)
+        state = TripPlanState(trip_id="t", raw_user_message=msg, brief=brief)
+        return planner.plan(state).agents
+
+    # 단일 도메인은 좁게
+    assert plan_for("삿포로 항공권 찾아줘", pref="flight, flight_search") == ["flight"]
+    assert plan_for("삿포로 4성급 이상 호텔 추천해줘") == ["accommodation"]
+    # 종합 요청은 넓게(일정/맛집위주 등)
+    assert "route" in plan_for("삿포로 3박4일 여행 일정 짜줘")
+    full = plan_for("일본 4박5일 가고싶어 맛집이랑 쇼핑 위주")
+    assert "accommodation" in full and "route" in full  # 맛집만으로 좁혀지지 않음

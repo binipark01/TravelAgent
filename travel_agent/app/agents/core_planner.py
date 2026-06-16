@@ -71,6 +71,10 @@ class CorePlannerAgent:
     def plan(self, state: Any) -> CorePlan:
         brief = getattr(state, "brief", None)
         request_text = getattr(state, "raw_user_message", "") or ""
+        # 명확한 단일 도메인 요청('항공권 찾아줘' 등)은 LLM의 과한 확장을 막고 좁게 확정한다.
+        focused = self._focused_plan(brief, request_text)
+        if focused is not None:
+            return focused
         if self.enabled:
             try:
                 agents, reason = self._llm_select(brief, request_text)
@@ -218,6 +222,36 @@ class CorePlannerAgent:
         if start == -1 or end == -1 or end <= start:
             raise RuntimeError("코어 플래너 응답에서 JSON 객체를 찾지 못했습니다.")
         return json.loads(candidate[start : end + 1])
+
+    # --------------------------------------------------------- focused scope
+    _FULL_PLAN_TOKENS = (
+        "일정", "여행 계획", "여행계획", "코스", "동선", "플랜",
+        "계획 짜", "계획짜", "다 짜", "전부", "한바퀴", "스케줄",
+    )
+
+    def _focused_plan(self, brief: Any, request_text: str) -> CorePlan | None:
+        """단일 도메인(항공/숙소/맛집)만 원하는 요청이면 그것만 고른다. 종합 키워드가
+        있으면 None을 반환해 LLM/규칙이 폭넓게 고르게 한다."""
+        text = (request_text or "").lower()
+        if any(token in text for token in self._FULL_PLAN_TOKENS):
+            return None
+        pref = (getattr(brief, "transport_preference", None) or "") if brief else ""
+        is_flight = "flight_search" in pref or any(
+            token in text for token in ("항공권", "비행기", "항공편", "flight")
+        )
+        wants_hotel = any(
+            token in text for token in ("숙소", "호텔", "에어비앤비", "airbnb", "아고다", "agoda")
+        )
+        # 맛집/쇼핑/관광은 '종합 여행의 관심사'로 더 많이 쓰여 단일 도메인 판정에서 제외하고,
+        # 다른 도메인 신호로만 본다(예: '맛집이랑 쇼핑 위주'는 종합 계획이지 맛집검색이 아님).
+        other_interest = any(
+            token in text for token in ("맛집", "식당", "레스토랑", "쇼핑", "관광", "코스")
+        )
+        if is_flight and not wants_hotel and not other_interest:
+            return CorePlan(["flight"], "항공권 검색 요청(단일 도메인)", "rule")
+        if wants_hotel and not is_flight and not other_interest:
+            return CorePlan(["accommodation"], "숙소 검색 요청(단일 도메인)", "rule")
+        return None
 
     # ------------------------------------------------------------- fallback
     def _fallback(self, brief: Any, request_text: str) -> CorePlan:

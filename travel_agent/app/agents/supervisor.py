@@ -158,10 +158,12 @@ class TravelSupervisorAgent:
         # 코어 오케스트레이터가 요청에 맞는 서브에이전트 집합을 동적으로 선택한다.
         plan = self.core_planner.plan(state)
         selected = self._expand_dependencies(plan.agents)
-        # 이어가기 턴(이미 결과가 있음): 편집/제약이 항상 재반영되도록 일정·예산을 강제
-        # 재구성하고, 검색 도메인은 입력이 바뀐 경우에만 다시 검색한다(아래 _needs_search).
-        if self._has_prior_results(state):
+        # 이어가기 턴에 '이미 일정이 있는 종합 계획'이면 편집/제약이 항상 재반영되도록
+        # 일정·예산을 강제 재구성한다. 항공권만/숙소만 같은 단일 검색 세션은 건드리지 않는다.
+        if state.optimized_itinerary is not None:
             selected = self._expand_dependencies([*selected, "route", "budget"])
+        # 횡단 정보(비자·환율·안전·근교·교통권)는 '종합 계획'일 때만. 단일 검색은 과함.
+        is_full_plan = "route" in selected
         if recorder:
             recorder.event(
                 "core_plan_decided",
@@ -237,72 +239,74 @@ class TravelSupervisorAgent:
                     else "예산 계산 없음"
                 ),
             )
-        # 항상 실행하는 횡단 정보(입국/비자, 현지 이동) — LLM 선택과 무관한 해외여행 필수 정보
-        self._recorded_step(
-            recorder,
-            "VisaAgent",
-            "입국/비자 요건 확인",
-            lambda: self.visa_agent.run(state),
-            lambda: (
-                state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
-            ),
-        )
-        self._recorded_step(
-            recorder,
-            "LocalTransportAgent",
-            "현지 교통 안내",
-            lambda: self.local_transport_agent.run(state),
-            lambda: (
-                f"{state.local_transport.city} 교통 안내"
-                if state.local_transport
-                else "현지 교통 데이터 없음"
-            ),
-        )
-        self._recorded_step(
-            recorder,
-            "FxAgent",
-            "환율/예산 환산",
-            lambda: self.fx_agent.run(state),
-            lambda: (
-                f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
-                f"{state.fx_info.base_currency}"
-                if state.fx_info
-                else "환율 정보 없음"
-            ),
-        )
-        self._recorded_step(
-            recorder,
-            "SafetyAgent",
-            "안전·긴급 정보",
-            lambda: self.safety_agent.run(state),
-            lambda: (
-                f"{state.safety_info.destination_country} 안전 정보"
-                if state.safety_info
-                else "안전 정보 데이터 없음"
-            ),
-        )
-        self._recorded_step(
-            recorder,
-            "NearbyAgent",
-            "근교 당일치기 정리",
-            lambda: self.nearby_agent.run(state),
-            lambda: (
-                f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
-                if state.nearby_guide
-                else "근교 데이터 없음"
-            ),
-        )
-        self._recorded_step(
-            recorder,
-            "TransportTicketsAgent",
-            "교통권 예매·경로 정리",
-            lambda: self.transport_tickets_agent.run(state),
-            lambda: (
-                f"{len(state.transport_tickets.platforms)}개 예매처"
-                if state.transport_tickets
-                else "교통권 데이터 없음"
-            ),
-        )
+        # 횡단 정보(입국/비자·현지교통·환율·안전·근교·교통권)는 종합 계획일 때만.
+        # 항공권만/숙소만 같은 단일 검색에는 붙이지 않는다(과한 출력 방지).
+        if is_full_plan:
+            self._recorded_step(
+                recorder,
+                "VisaAgent",
+                "입국/비자 요건 확인",
+                lambda: self.visa_agent.run(state),
+                lambda: (
+                    state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "LocalTransportAgent",
+                "현지 교통 안내",
+                lambda: self.local_transport_agent.run(state),
+                lambda: (
+                    f"{state.local_transport.city} 교통 안내"
+                    if state.local_transport
+                    else "현지 교통 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "FxAgent",
+                "환율/예산 환산",
+                lambda: self.fx_agent.run(state),
+                lambda: (
+                    f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
+                    f"{state.fx_info.base_currency}"
+                    if state.fx_info
+                    else "환율 정보 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "SafetyAgent",
+                "안전·긴급 정보",
+                lambda: self.safety_agent.run(state),
+                lambda: (
+                    f"{state.safety_info.destination_country} 안전 정보"
+                    if state.safety_info
+                    else "안전 정보 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "NearbyAgent",
+                "근교 당일치기 정리",
+                lambda: self.nearby_agent.run(state),
+                lambda: (
+                    f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
+                    if state.nearby_guide
+                    else "근교 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "TransportTicketsAgent",
+                "교통권 예매·경로 정리",
+                lambda: self.transport_tickets_agent.run(state),
+                lambda: (
+                    f"{len(state.transport_tickets.platforms)}개 예매처"
+                    if state.transport_tickets
+                    else "교통권 데이터 없음"
+                ),
+            )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")
