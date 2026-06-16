@@ -1983,6 +1983,46 @@ legend {
   color: var(--accent, #2563eb);
 }
 
+/* 결과 카드 밀도 — 한눈에 보기 좋게 2단 + 압축 */
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+/* 기본은 전체폭(목록·일정·비교·지도) */
+.plan-cards > .card {
+  grid-column: 1 / -1;
+  padding: 14px 16px;
+}
+.plan-cards > .card > .section-heading {
+  margin-bottom: 8px;
+}
+.plan-cards .section-heading h2 {
+  font-size: 15px;
+}
+.plan-cards .eyebrow {
+  margin-bottom: 3px;
+}
+/* 텍스트 위주 정보 카드는 절반폭으로 묶어 2개씩 나란히 */
+.plan-cards > .visa-card,
+.plan-cards > .fx-card,
+.plan-cards > .safety-card,
+.plan-cards > .local-transport-card,
+.plan-cards > .nearby-card,
+.plan-cards > .tickets-card {
+  grid-column: auto;
+}
+/* 좁은 화면에서는 한 줄로 */
+@media (max-width: 860px) {
+  .plan-cards {
+    grid-template-columns: 1fr;
+  }
+  .plan-cards > .card {
+    grid-column: 1 / -1;
+  }
+}
+
 /* 지도 카드 */
 .map-embed {
   border-radius: 12px;

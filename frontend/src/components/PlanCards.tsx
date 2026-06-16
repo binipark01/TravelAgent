@@ -46,7 +46,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   if (!hasAny) return null
 
   return (
-    <div className="assistant-detail-cards" style={{ display: 'grid', gap: 12 }}>
+    <div className="assistant-detail-cards plan-cards">
       {flights.length >= 2 && hotels.length >= 2 && (
         <PlanComparisonCard flights={flights} hotels={hotels} />
       )}
