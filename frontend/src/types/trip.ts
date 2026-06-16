@@ -153,6 +153,9 @@ export interface PassSuggestion {
 export interface TransportTicketGuide {
   destination_country: string
   summary: string
+  hub?: string | null
+  hub_lat?: number | null
+  hub_lng?: number | null
   platforms: BookingPlatform[]
   pass_suggestion?: PassSuggestion | null
   route_links: RouteLink[]

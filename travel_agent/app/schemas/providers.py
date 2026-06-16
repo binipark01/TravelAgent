@@ -201,6 +201,9 @@ class PassSuggestion(StrictBaseModel):
 class TransportTicketGuide(StrictBaseModel):
     destination_country: str
     summary: str
+    hub: str | None = None  # 지도 중심으로 쓸 허브 도시명
+    hub_lat: float | None = None  # 키 없는 OSM 지도 중심(Open-Meteo 지오코딩)
+    hub_lng: float | None = None
     platforms: list[BookingPlatform] = Field(default_factory=list)
     pass_suggestion: PassSuggestion | None = None
     route_links: list[RouteLink] = Field(default_factory=list)

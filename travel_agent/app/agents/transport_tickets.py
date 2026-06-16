@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from travel_agent.app.connectors.transport_tickets.booking_links import build_transport_tickets
+from travel_agent.app.connectors.weather.open_meteo import geocode
 from travel_agent.app.schemas.trip import TripPlanState
 
 
@@ -26,11 +27,21 @@ class TransportTicketsAgent:
             if state.nearby_guide
             else None
         )
+        # 키 없는 OSM 지도 중심용 좌표(Open-Meteo 지오코딩, 실패해도 무방).
+        hub_lat = hub_lng = None
+        try:
+            coords = geocode(hub)
+            if coords:
+                hub_lat, hub_lng = coords
+        except (OSError, ValueError):
+            pass
         guide = build_transport_tickets(
             destination,
             hub_city=hub,
             airport_label=f"{hub} 공항",
             nearby=nearby,
+            hub_lat=hub_lat,
+            hub_lng=hub_lng,
         )
         if guide is not None:
             state.transport_tickets = guide

@@ -169,6 +169,8 @@ def build_transport_tickets(
     hub_city: str | None = None,
     airport_label: str | None = None,
     nearby: list[str] | None = None,
+    hub_lat: float | None = None,
+    hub_lng: float | None = None,
 ) -> TransportTicketGuide | None:
     """목적지 기준 교통권 플랫폼·패스·구간 경로 딥링크를 만든다."""
     country = resolve_country(destination)
@@ -217,6 +219,9 @@ def build_transport_tickets(
     return TransportTicketGuide(
         destination_country=country or hub,
         summary=summary,
+        hub=hub,
+        hub_lat=hub_lat,
+        hub_lng=hub_lng,
         platforms=platforms,
         pass_suggestion=pass_suggestion,
         route_links=route_links,

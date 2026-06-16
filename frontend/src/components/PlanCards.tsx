@@ -4,6 +4,7 @@ import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
+import { MapCard } from './MapCard'
 import { NearbyCard } from './NearbyCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
@@ -59,6 +60,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
       {budget != null && <BudgetBreakdownCard budget={budget} />}
       {fx != null && <FxCard fx={fx} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
+      {tickets != null && <MapCard guide={tickets} />}
       {tickets != null && <TransportTicketsCard guide={tickets} />}
       {nearby != null && <NearbyCard guide={nearby} />}
       {visa != null && <VisaCard visa={visa} />}

@@ -1983,6 +1983,19 @@ legend {
   color: var(--accent, #2563eb);
 }
 
+/* 지도 카드 */
+.map-embed {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.25));
+}
+.map-embed iframe {
+  display: block;
+  width: 100%;
+  height: 300px;
+  border: 0;
+}
+
 /* 교통권 카드 */
 .pass-banner {
   display: flex;
