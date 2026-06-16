@@ -2023,6 +2023,80 @@ legend {
   }
 }
 
+/* 항공 후보 — 컴팩트 */
+.flight-list {
+  display: grid;
+  gap: 8px;
+}
+.flight-option {
+  background: var(--surface-soft, rgba(148, 163, 184, 0.06));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  display: grid;
+  gap: 4px;
+}
+.flight-option__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.flight-airline {
+  font-weight: 700;
+  font-size: 14px;
+}
+.flight-price {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.flight-route {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.flight-legs {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.flight-legs b {
+  color: inherit;
+  font-weight: 700;
+}
+.flight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.flight-chip {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+}
+.flight-option__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.flight-option__foot a {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.flight-disclaimer {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* 지도 카드 */
 .map-embed {
   border-radius: 12px;
