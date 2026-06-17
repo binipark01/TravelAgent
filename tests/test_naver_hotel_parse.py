@@ -343,3 +343,33 @@ def test_google_hotel_url_embeds_dates() -> None:
     url = build_google_hotel_url("Sapporo", date(2026, 7, 7), date(2026, 7, 11))
     q = unquote_plus(url)
     assert "2026년 7월 7일" in q and "7월 11일" in q
+
+
+def test_bayesian_rating_dampens_few_reviews() -> None:
+    from travel_agent.app.connectors.accommodations.naver_hotel_browser import _bayesian_rating
+
+    # 리뷰 적은 5.0(2개)은 평균쪽으로 당겨져, 리뷰 많은 4.5(3000개)보다 낮아진다.
+    few = _bayesian_rating(5.0, 2, 4.2)
+    many = _bayesian_rating(4.5, 3000, 4.2)
+    assert few < many
+    # 평점 없으면 None
+    assert _bayesian_rating(None, 100, 4.2) is None
+
+
+def test_curate_recommends_blended_top_pick() -> None:
+    # 같은 가격이면, 평점이 살짝 높아도 리뷰가 8개뿐인 곳보다 리뷰 4000개로 검증된 곳이
+    # 베이지안 보정으로 추천(맨 위)에 온다.
+    def gh(name, *, rating, reviews):
+        return hotel_to_option(
+            {"name": name, "amount": 100_000, "rating": rating, "star": None,
+             "reviews": reviews, "amenities": [], "source_url": "x"},
+            "Sapporo", 1, "KRW", provider="google_hotel",
+        )
+
+    thin = gh("평점높고리뷰적음", rating=4.9, reviews=8)
+    solid = gh("리뷰탄탄", rating=4.6, reviews=4000)
+    filler = gh("평범", rating=3.8, reviews=500)  # 평균을 낮춰 베이지안 보정이 또렷해짐
+    curated = _curate_hotels([thin, solid, filler], max_nightly_price=None, limit=8)
+
+    assert curated[0].name == "리뷰탄탄"
+    assert any("💎 추천" in n for n in curated[0].notes)

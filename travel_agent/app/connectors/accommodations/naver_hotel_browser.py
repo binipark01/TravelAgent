@@ -202,7 +202,7 @@ def extract_live_accommodation_options(
     nights: int,
     currency: str,
     timeout_seconds: int = 35,
-    limit: int = 8,
+    limit: int = 10,
     max_nightly_price: int | None = None,
     room_preference: str | None = None,
     request_text: str | None = None,
@@ -226,7 +226,7 @@ def extract_live_accommodation_options(
         )
 
         for hotel in GoogleHotelBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-            destination, limit=max(limit, 12), checkin=checkin, checkout=checkout
+            destination, limit=max(limit, 18), checkin=checkin, checkout=checkout
         ):
             options.append(
                 hotel_to_option(hotel, destination, nights, currency, provider="google_hotel")
@@ -240,7 +240,7 @@ def extract_live_accommodation_options(
     if not dated or not options:
         try:
             for hotel in NaverHotelBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-                destination, limit=max(limit, 12)
+                destination, limit=max(limit, 18)
             ):
                 options.append(
                     hotel_to_option(hotel, destination, nights, currency, provider="naver_hotel")
@@ -321,12 +321,39 @@ def _curate_hotels(
             miss += 1
         return miss
 
+    # 추천 점수용 풀 컨텍스트(평균 평점·가격 범위). 리뷰는 베이지안 평균으로 개수 보정.
+    rated = [o.rating for o in options if o.rating is not None]
+    mean_rating = sum(rated) / len(rated) if rated else 4.2
+    prices = [o.nightly_price.amount for o in options if o.nightly_price.amount]
+    pmin, pmax = (min(prices), max(prices)) if prices else (0, 0)
+
+    def _score(option: AccommodationOption) -> float:
+        """가격만이 아니라 리뷰(점수×개수)·위치·성급을 블렌딩한 추천 점수(0~1).
+
+        리뷰 연구: 리뷰 점수 > 별점, 개수 적은 곳은 베이지안으로 평균쪽으로 보정.
+        위치 연구: 역/중심 근접이 강한 선호 요인. 가격은 위치와 공동 1순위.
+        """
+        br = _bayesian_rating(option.rating, option.review_count, mean_rating)
+        review_n = (br / 5.0) if br is not None else 0.5
+        amount = option.nightly_price.amount or pmax
+        price_v = 1.0 if pmax == pmin else (pmax - amount) / (pmax - pmin)
+        area = option.location.area
+        if area and "역" in area:
+            loc = 1.0  # 역세권
+        elif area:
+            loc = 0.75  # 인지되는 중심 지역
+        else:
+            loc = 0.4
+        star_n = (option.star_rating / 5.0) if option.star_rating else 0.5
+        amenity = 0.1 if _has_breakfast(option.amenities) else 0.0
+        return 0.30 * review_n + 0.28 * price_v + 0.25 * loc + 0.10 * star_n + 0.07 * amenity
+
     def _rank(option: AccommodationOption) -> tuple[int, int, float]:
-        # 위치 일치 > 조건 확인됨 > 저렴한 순.
+        # 위치 요청 일치 > 조건 확인됨 > 추천 점수 높은 순(가격·리뷰·위치 블렌딩).
         area_miss = 0 if (area_query and _area_matches(option, area_query)) else (
             1 if area_query else 0
         )
-        return (area_miss, _unverified(option), option.nightly_price.amount or 10**12)
+        return (area_miss, _unverified(option), -_score(option))
 
     area_hit = bool(area_query) and any(_area_matches(o, area_query) for o in options)
 
@@ -345,8 +372,11 @@ def _curate_hotels(
     curated.sort(key=_rank)  # 표시 순서: 위치>확인>가격
 
     cap_label = f"{max_nightly_price // 10000}만원" if max_nightly_price else None
+    top_pick = curated[0]
     for option in curated:
         tags: list[str] = []
+        if option is top_pick and not area_query:
+            tags.append("💎 추천")  # 리뷰·가성비·위치 블렌딩 1순위
         if option is cheapest:
             tags.append("💰 최저가")
         if option.location.area:
@@ -374,6 +404,20 @@ def _curate_hotels(
 
 def _has_breakfast(amenities: list[str]) -> bool:
     return any("조식" in item or "레스토랑" in item for item in amenities)
+
+
+def _bayesian_rating(
+    rating: float | None, count: int | None, mean: float, confidence: float = 50.0
+) -> float | None:
+    """리뷰 개수를 반영한 베이지안 평균 평점.
+
+    BR = (rating*n + C*mean) / (n + C). 가짜 표(C개)를 전체 평균(mean)에 두어, 리뷰가
+    적은 곳(9.5·50개)은 평균쪽으로 당겨 많은 곳(8.8·5000개)과 공정하게 비교한다.
+    """
+    if rating is None:
+        return None
+    n = count or 0
+    return (rating * n + confidence * mean) / (n + confidence)
 
 
 def _apply_hotel_filters(
