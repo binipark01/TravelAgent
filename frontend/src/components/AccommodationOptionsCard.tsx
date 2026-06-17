@@ -2,6 +2,8 @@ import type { AccommodationOption } from '../types/trip'
 import { cleanDisplayText, formatMoney } from '../utils/format'
 import { EmptyState } from './EmptyState'
 
+const TAG_MARK = /[💰📍✅⚠️]|ℹ️/
+
 export function AccommodationOptionsCard({ options }: { options: AccommodationOption[] }) {
   return (
     <section className="card">
@@ -14,69 +16,66 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
       {options.length === 0 ? (
         <EmptyState message="아직 숙소 후보가 없습니다." />
       ) : (
-        <div className="option-list">
-          {options.map((option) => (
-            <article className="option-card" key={option.option_id}>
-              <div className="option-card-header">
-                <h3>{cleanDisplayText(option.name)}</h3>
-                <div className="option-badges">
-                  <span className="small-badge">{hotelSourceLabel(option.metadata.provider_name)}</span>
-                  <span
-                    className={`small-badge source-kind-${option.metadata.source_ref.is_mock ? 'mock' : 'live'}`}
-                  >
-                    {option.metadata.source_ref.is_mock ? 'mock' : 'live'}
-                  </span>
-                  {option.rating && <span className="small-badge">★ {option.rating.toFixed(1)}</span>}
-                  {option.star_rating && (
-                    <span className="small-badge">{option.star_rating}성급</span>
+        <>
+          <div className="hotel-list">
+            {options.map((option) => {
+              const tagNote = option.notes.find((note) => TAG_MARK.test(note))
+              const chips = tagNote
+                ? tagNote.split('·').map((part) => part.trim()).filter(Boolean)
+                : []
+              const url = option.metadata.source_ref.source_url
+              return (
+                <article className="hotel-row" key={option.option_id}>
+                  <div className="hotel-row__head">
+                    <span className="hotel-name">{cleanDisplayText(option.name)}</span>
+                    <strong className="hotel-price">
+                      {formatMoney(option.nightly_price)}
+                      <span className="hotel-price__unit">/박</span>
+                    </strong>
+                  </div>
+                  <div className="hotel-row__meta">
+                    {option.rating != null && <span>★ {option.rating.toFixed(1)}</span>}
+                    {option.star_rating != null && <span>{option.star_rating}성급</span>}
+                    <span>{hotelSourceLabel(option.metadata.provider_name)}</span>
+                    {option.review_count ? (
+                      <span>리뷰 {option.review_count.toLocaleString('ko-KR')}</span>
+                    ) : null}
+                  </div>
+                  {option.amenities && option.amenities.length > 0 && (
+                    <div className="amenity-chips">
+                      {option.amenities.slice(0, 4).map((amenity) => (
+                        <span className="amenity-chip" key={`${option.option_id}-${amenity}`}>
+                          {cleanDisplayText(amenity)}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                </div>
-              </div>
-              <p>
-                {cleanDisplayText(option.location.name)}
-                {option.review_count ? ` · 리뷰 ${option.review_count.toLocaleString('ko-KR')}` : ''}
-                {` · 출처: ${hotelSourceLabel(option.metadata.provider_name)}`}
-              </p>
-              {option.amenities && option.amenities.length > 0 && (
-                <div className="amenity-chips">
-                  {option.amenities.slice(0, 5).map((amenity) => (
-                    <span className="amenity-chip" key={`${option.option_id}-${amenity}`}>
-                      {cleanDisplayText(amenity)}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p>1박 {formatMoney(option.nightly_price)}</p>
-              <strong>총 {formatMoney(option.total_price)}</strong>
-              <p className="fine-print">{cleanCancellationPolicy(option.cancellation_policy)}</p>
-              {option.notes.length > 0 && (
-                <ul className="option-note-list">
-                  {option.notes.slice(0, 2).map((note) => (
-                    <li key={`${option.option_id}-${note}`}>{cleanDisplayText(note)}</li>
-                  ))}
-                </ul>
-              )}
-              {option.metadata.source_ref.source_url && (
-                <a
-                  className="option-link"
-                  href={option.metadata.source_ref.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  예약 페이지에서 확인 ↗
-                </a>
-              )}
-            </article>
-          ))}
-        </div>
+                  {chips.length > 0 && (
+                    <div className="hotel-tags">
+                      {chips.map((chip) => (
+                        <span className="flight-chip" key={`${option.option_id}-${chip}`}>
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="hotel-row__foot">
+                    <span className="hotel-total">총 {formatMoney(option.total_price)}</span>
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        예약 ↗
+                      </a>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+          <p className="card-footnote">실시간 추출 가격 · 예약 전 가격·날짜 재확인 필요</p>
+        </>
       )}
     </section>
   )
-}
-
-function cleanCancellationPolicy(policy: string): string {
-  if (/simulated/i.test(policy)) return '체크인 48시간 전까지 취소 조건 확인 필요'
-  return cleanDisplayText(policy)
 }
 
 /** provider_name(naver_hotel/google_hotel)을 읽기 쉬운 출처명으로 바꾼다. */

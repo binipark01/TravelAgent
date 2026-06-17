@@ -20,43 +20,32 @@ export function RestaurantOptionsCard({ options, eyebrow = '맛집', title = '�
       {options.length === 0 ? (
         <EmptyState message={`아직 ${title}가 없습니다.`} />
       ) : (
-        <div className="option-list">
-          {options.map((option) => {
-            const url = option.metadata.source_ref.source_url
-            return (
-              <article className="option-card" key={option.poi_id}>
-                <div className="option-card-header">
-                  <h3>{cleanDisplayText(option.title)}</h3>
-                  <div className="option-badges">
-                    <span
-                      className={`small-badge source-kind-${
-                        option.metadata.source_ref.is_mock ? 'mock' : 'live'
-                      }`}
-                    >
-                      {option.metadata.source_ref.is_mock ? 'mock' : 'live'}
-                    </span>
+        <>
+          <ul className="poi-list">
+            {options.map((option) => {
+              const url = option.metadata.source_ref.source_url
+              return (
+                <li className="poi-row" key={option.poi_id}>
+                  <div className="poi-row__main">
+                    <span className="poi-name">{cleanDisplayText(option.title)}</span>
+                    {option.type && <span className="poi-type">{cleanDisplayText(option.type)}</span>}
+                  </div>
+                  <div className="poi-row__meta">
                     {option.rating != null && (
-                      <span className="small-badge">★ {option.rating.toFixed(1)}</span>
+                      <span className="poi-rating">★ {option.rating.toFixed(1)}</span>
+                    )}
+                    {url && (
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        지도 ↗
+                      </a>
                     )}
                   </div>
-                </div>
-                {option.type && <p>{cleanDisplayText(option.type)}</p>}
-                {option.notes.length > 0 && (
-                  <ul className="option-note-list">
-                    {option.notes.slice(0, 2).map((note) => (
-                      <li key={`${option.poi_id}-${note}`}>{cleanDisplayText(note)}</li>
-                    ))}
-                  </ul>
-                )}
-                {url && (
-                  <a className="option-link" href={url} target="_blank" rel="noopener noreferrer">
-                    구글 지도에서 보기 ↗
-                  </a>
-                )}
-              </article>
-            )
-          })}
-        </div>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="card-footnote">구글 지도 실시간 · 영업시간·예약은 방문 전 확인</p>
+        </>
       )}
     </section>
   )
