@@ -111,10 +111,16 @@ a {
   padding: 24px;
 }
 
+/* 에이전트 워크스페이스(홈)는 3분할이라 넓은 화면을 더 채운다 */
+.app-main:has(.agent-console-shell) {
+  max-width: min(2240px, 100%);
+}
+
 .agent-console-shell {
   display: grid;
   gap: 16px;
-  grid-template-columns: 220px minmax(0, 1fr) 384px;
+  grid-template-columns: 240px minmax(0, 1fr) 420px;
+  align-items: start;
   min-height: calc(100vh - 112px);
 }
 
@@ -270,6 +276,7 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  min-height: calc(100vh - 112px);
   max-height: calc(100vh - 112px);
   overflow: auto;
   padding: 18px;
@@ -2388,7 +2395,7 @@ legend {
 .map-embed iframe {
   display: block;
   width: 100%;
-  height: 300px;
+  height: 420px;
   border: 0;
 }
 
@@ -2854,7 +2861,7 @@ legend {
 
 @media (max-width: 1240px) {
   .agent-console-shell {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
   }
 
   .agent-inspector-panel,
