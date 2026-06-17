@@ -47,6 +47,9 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
 
   return (
     <div className="assistant-detail-cards plan-cards">
+      {tickets != null && <MapCard guide={tickets} />}
+      {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
+      {budget != null && <BudgetBreakdownCard budget={budget} />}
       {flights.length >= 2 && hotels.length >= 2 && (
         <PlanComparisonCard flights={flights} hotels={hotels} />
       )}
@@ -56,12 +59,9 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
         <RestaurantOptionsCard options={activities} eyebrow="관광" title="관광지 후보" />
       )}
       {pois.length > 0 && <RestaurantOptionsCard options={pois} />}
-      {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
-      {budget != null && <BudgetBreakdownCard budget={budget} />}
       {fx != null && <FxCard fx={fx} />}
-      {localTransport != null && <LocalTransportCard plan={localTransport} />}
-      {tickets != null && <MapCard guide={tickets} />}
       {tickets != null && <TransportTicketsCard guide={tickets} />}
+      {localTransport != null && <LocalTransportCard plan={localTransport} />}
       {nearby != null && <NearbyCard guide={nearby} />}
       {visa != null && <VisaCard visa={visa} />}
       {safety != null && <SafetyCard safety={safety} />}

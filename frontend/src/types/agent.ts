@@ -15,6 +15,8 @@ export type AgentEventType =
   | 'evidence_collected'
   | 'evidence_normalized'
   | 'evidence_ranked'
+  | 'core_plan_decided'
+  | 'search_reused'
   | 'missing_info_detected'
   | 'critic_blocker_found'
   | 'approval_required'

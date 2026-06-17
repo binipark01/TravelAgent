@@ -114,13 +114,15 @@ a {
 .agent-console-shell {
   display: grid;
   gap: 16px;
-  grid-template-columns: 244px minmax(0, 1fr) 304px;
+  grid-template-columns: 220px minmax(0, 1fr) 384px;
   min-height: calc(100vh - 112px);
 }
 
 .agent-session-panel,
 .agent-inspector-panel,
-.agent-chat-panel {
+.agent-chat-panel,
+.trip-canvas,
+.chat-dock {
   min-width: 0;
 }
 
@@ -245,7 +247,8 @@ a {
   width: 12px;
 }
 
-.agent-chat-panel {
+.agent-chat-panel,
+.chat-dock {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -253,7 +256,107 @@ a {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: calc(100vh - 112px);
+  max-height: calc(100vh - 112px);
   overflow: hidden;
+}
+.chat-dock {
+  position: sticky;
+  top: 84px;
+}
+
+/* 여행 작업 캔버스(중앙) — 지도·일정·예산·카드 */
+.trip-canvas {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.trip-summary {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.trip-summary__main h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.trip-summary__sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.trip-summary__stats {
+  display: flex;
+  gap: 10px;
+}
+.trip-stat {
+  background: var(--surface-muted, rgba(148, 163, 184, 0.1));
+  border-radius: 10px;
+  padding: 8px 14px;
+  text-align: right;
+}
+.trip-stat span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.trip-stat strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+.canvas-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 320px;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px;
+}
+.canvas-empty svg {
+  width: 32px;
+  height: 32px;
+  opacity: 0.5;
+}
+.canvas-empty p {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 예산 막대 차트 */
+.budget-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.budget-bar span {
+  display: block;
+  height: 100%;
+}
+.budget-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .chat-panel-header {
@@ -2754,7 +2857,8 @@ legend {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .agent-inspector-panel {
+  .agent-inspector-panel,
+  .chat-dock {
     grid-column: 1 / -1;
     max-height: none;
     position: static;
@@ -2814,13 +2918,16 @@ legend {
 
   .agent-session-panel,
   .agent-inspector-panel,
-  .agent-chat-panel {
+  .agent-chat-panel,
+  .trip-canvas,
+  .chat-dock {
     max-height: none;
     min-height: auto;
     position: static;
   }
 
-  .agent-chat-panel {
+  .agent-chat-panel,
+  .chat-dock {
     grid-template-rows: auto auto auto;
   }
 

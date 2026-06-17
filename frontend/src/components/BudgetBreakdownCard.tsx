@@ -11,6 +11,15 @@ const labels: Record<keyof BudgetEstimate['breakdown'], string> = {
   buffer: '예비비',
 }
 
+const barColors: Record<keyof BudgetEstimate['breakdown'], string> = {
+  flights: '#378ADD',
+  accommodation: '#1D9E75',
+  food: '#EF9F27',
+  local_transport: '#7F77DD',
+  activities: '#D85A30',
+  buffer: '#888780',
+}
+
 export function BudgetBreakdownCard({ budget }: { budget?: BudgetEstimate | null }) {
   return (
     <section className="card">
@@ -34,13 +43,42 @@ export function BudgetBreakdownCard({ budget }: { budget?: BudgetEstimate | null
               <strong>{formatNumber(budget.per_person_estimated_cost, budget.currency)}</strong>
             </div>
           </div>
-          <dl className="breakdown-list">
-            {Object.entries(budget.breakdown).map(([key, value]) => (
-              <div key={key}>
-                <dt>{labels[key as keyof BudgetEstimate['breakdown']]}</dt>
-                <dd>{formatNumber(value, budget.currency)}</dd>
+          {(() => {
+            const entries = Object.entries(budget.breakdown) as [
+              keyof BudgetEstimate['breakdown'],
+              number,
+            ][]
+            const total = entries.reduce((sum, [, value]) => sum + (value || 0), 0)
+            if (total <= 0) return null
+            return (
+              <div className="budget-bar" role="img" aria-label="예산 구성 비율">
+                {entries
+                  .filter(([, value]) => value > 0)
+                  .map(([key, value]) => (
+                    <span
+                      key={key}
+                      title={`${labels[key]} ${Math.round((value / total) * 100)}%`}
+                      style={{ width: `${(value / total) * 100}%`, background: barColors[key] }}
+                    />
+                  ))}
               </div>
-            ))}
+            )
+          })()}
+          <dl className="breakdown-list">
+            {Object.entries(budget.breakdown)
+              .filter(([, value]) => value > 0)
+              .map(([key, value]) => (
+                <div key={key}>
+                  <dt>
+                    <span
+                      className="budget-dot"
+                      style={{ background: barColors[key as keyof BudgetEstimate['breakdown']] }}
+                    />
+                    {labels[key as keyof BudgetEstimate['breakdown']]}
+                  </dt>
+                  <dd>{formatNumber(value, budget.currency)}</dd>
+                </div>
+              ))}
           </dl>
           {budget.budget_warnings.length > 0 && (
             <ul className="text-list warning-list">

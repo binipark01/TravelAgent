@@ -1,16 +1,15 @@
 import { useMutation } from '@tanstack/react-query'
-import { Bot, CheckCircle2, Circle, Clock3, Hotel, Plane, Plus, SearchCheck } from 'lucide-react'
+import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
 import { Fragment, useEffect, useState } from 'react'
 import { addAgentRunMessage, createAgentRun } from '../api/agent'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
 import { PlanCards } from '../components/PlanCards'
+import { TripSummaryHeader } from '../components/TripSummaryHeader'
 import type { AgentRunDetailResponse, AgentRunResponse } from '../types/agent'
 import type { LLMAnswerRequest } from '../types/llm'
-import { agentDisplayLabel } from '../utils/agentDisplay'
 import {
   RUN_STATUS_LABELS,
-  SCOPE_LABELS,
   buildAgentRunAnswer,
   coreSelectedAgents,
 } from '../utils/agentRunDisplay'
@@ -61,21 +60,6 @@ function adaptDetail(detail: AgentRunDetailResponse): AgentRunResponse {
   }
 }
 
-/** 응답에서 실시간(is_mock=false) 후보만 골라낸다. mock은 화면에 표시하지 않는다. */
-function realOptions(data: AgentRunResponse) {
-  const plan = data.partial_plan
-  return {
-    flights: (plan?.transport_options ?? []).filter((option) => !option.metadata.is_mock),
-    hotels: (plan?.accommodation_options ?? []).filter(
-      (option) => !option.metadata.source_ref.is_mock,
-    ),
-    pois: (plan?.poi_candidates ?? []).filter((option) => !option.metadata.source_ref.is_mock),
-    activities: (plan?.activity_options ?? []).filter(
-      (option) => !option.metadata.source_ref.is_mock,
-    ),
-  }
-}
-
 export function HomePage() {
   const [turns, setTurns] = useState<ChatTurn[]>([])
   // 같은 세션의 run을 이어가 일정·후보가 턴 사이에 유지되게 한다(상태 영속).
@@ -115,18 +99,12 @@ export function HomePage() {
     mutation.mutate({ payload, turnId })
   }
 
-  // 인스펙터(오른쪽)는 가장 최근에 '완료된' 응답을 기준으로 보여준다.
+  // 중앙 캔버스/좌측 패널은 가장 최근에 '완료된' 응답을 기준으로 보여준다.
   const lastResolved = [...turns].reverse().find((turn) => turn.response)?.response
   const plan = lastResolved?.partial_plan
   const summary = lastResolved?.state_summary
-  const steps = lastResolved?.steps ?? []
+  const firstWeather = plan?.optimized_itinerary?.days?.[0]?.weather ?? null
   const selectedAgents = lastResolved ? coreSelectedAgents(lastResolved) : []
-  const sourceRefs = plan?.source_refs ?? []
-  const counts = lastResolved
-    ? realOptions(lastResolved)
-    : { flights: [], hotels: [] }
-  const flightCount = counts.flights.length
-  const accommodationCount = counts.hotels.length
   const latestMessage = turns.length > 0 ? turns[turns.length - 1].message : null
   const statusBadge = mutation.isPending
     ? 'agent 실행 중'
@@ -175,7 +153,25 @@ export function HomePage() {
         </section>
       </aside>
 
-      <section className="agent-chat-panel" aria-label="여행 agent 대화">
+      <section className="trip-canvas" aria-label="여행 계획">
+        {plan ? (
+          <>
+            <TripSummaryHeader summary={summary} weather={firstWeather} />
+            <PlanCards plan={plan} />
+          </>
+        ) : mutation.isPending ? (
+          <div className="canvas-empty">
+            <RunProgress />
+          </div>
+        ) : (
+          <div className="canvas-empty">
+            <Plane aria-hidden="true" />
+            <p>오른쪽에서 여행을 요청하면 여기에 지도·일정·예산이 정리돼 나타납니다.</p>
+          </div>
+        )}
+      </section>
+
+      <section className="chat-dock" aria-label="여행 agent 대화">
         <div className="chat-panel-header">
           <div>
             <p className="eyebrow">여행 agent</p>
@@ -244,103 +240,6 @@ export function HomePage() {
           <AgentCommandBox isSubmitting={mutation.isPending} onSubmit={handleSubmit} />
         </div>
       </section>
-
-      <aside className="agent-inspector-panel" aria-label="agent 상태">
-        <section className="inspector-section">
-          <div className="sidebar-title">
-            <SearchCheck aria-hidden="true" />
-            <h2>실행한 agent</h2>
-          </div>
-          <ul className="agent-status-list">
-            {steps.length > 0 ? (
-              steps.map((step) => (
-                <li key={step.step_id}>
-                  <CheckCircle2 aria-hidden="true" />
-                  <div>
-                    <strong>{agentDisplayLabel(step.agent_name)}</strong>
-                    <p>{step.output_summary ?? step.input_summary}</p>
-                  </div>
-                </li>
-              ))
-            ) : (
-              <li>
-                <Circle aria-hidden="true" />
-                <div>
-                  <strong>대기</strong>
-                  <p>요청 후 필요한 agent가 자동으로 선택됩니다.</p>
-                </div>
-              </li>
-            )}
-          </ul>
-        </section>
-
-        <section className="inspector-section">
-          <div className="sidebar-title">
-            <Clock3 aria-hidden="true" />
-            <h2>요청 상태</h2>
-          </div>
-          {summary ? (
-            <div className="request-status-list">
-              <div>
-                <strong>해석한 검색 조건</strong>
-                <p>
-                  {[summary.origin, summary.destination].filter(Boolean).join(' → ') || '목적지 미정'}
-                  {summary.date_range ? ` · ${summary.date_range}` : ''}
-                  {summary.travelers ? ` · ${summary.travelers}명` : ''}
-                </p>
-              </div>
-              {selectedAgents.length > 0 && (
-                <div>
-                  <strong>코어가 고른 에이전트</strong>
-                  <p>{selectedAgents.map((key) => SCOPE_LABELS[key] ?? key).join(', ')}</p>
-                </div>
-              )}
-              <div>
-                <strong>상태</strong>
-                <p>
-                  {lastResolved ? (RUN_STATUS_LABELS[lastResolved.status] ?? lastResolved.status) : '-'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="empty-panel-text">아직 요청 상태가 없습니다.</p>
-          )}
-        </section>
-
-        <section className="inspector-section">
-          <div className="sidebar-title">
-            <Plane aria-hidden="true" />
-            <h2>검색 출처</h2>
-          </div>
-          <div className="source-count-grid">
-            <div>
-              <Plane aria-hidden="true" />
-              <strong>{flightCount}</strong>
-              <span>항공</span>
-            </div>
-            <div>
-              <Hotel aria-hidden="true" />
-              <strong>{accommodationCount}</strong>
-              <span>숙소</span>
-            </div>
-          </div>
-          {sourceRefs.length > 0 ? (
-            <ul className="source-detail-list">
-              {sourceRefs.slice(0, 8).map((ref) => (
-                <li key={ref.source_id}>
-                  <div>
-                    <strong>{ref.title || ref.provider}</strong>
-                    <span>{ref.is_mock ? 'mock' : 'live'}</span>
-                  </div>
-                  <p>{ref.freshness_note || ref.provider}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="empty-panel-text">아직 확인한 검색 출처가 없습니다.</p>
-          )}
-        </section>
-      </aside>
     </div>
   )
 }
@@ -381,9 +280,6 @@ function AssistantAnswer({ data }: { data: AgentRunResponse }) {
     <section className="assistant-answer-message" aria-label="agent 답변">
       <div className="llm-answer-text" style={{ whiteSpace: 'pre-line' }}>
         {buildAgentRunAnswer(data)}
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <PlanCards plan={data.partial_plan} />
       </div>
     </section>
   )

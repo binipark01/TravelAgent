@@ -80,7 +80,9 @@ export function buildAgentRunAnswer(data: AgentRunResponse): string {
 }
 
 /** 검색한 날짜 범위와 최저가 추천을 한 줄로 정리한다. */
-function summarizeFlights(flights: AgentRunResponse['partial_plan']['transport_options']): string {
+function summarizeFlights(
+  flights: NonNullable<AgentRunResponse['partial_plan']>['transport_options'],
+): string {
   const dates = [...new Set(flights.map((option) => option.departure_time.slice(0, 10)))].sort()
   const prices = flights.map((option) => option.price.amount).filter((amount) => amount > 0)
   const dateSpan =
@@ -100,7 +102,9 @@ function summarizeFlights(flights: AgentRunResponse['partial_plan']['transport_o
 }
 
 /** 숙소 개수와 1박 최저가를 한 줄로 정리한다. */
-function summarizeHotels(hotels: AgentRunResponse['partial_plan']['accommodation_options']): string {
+function summarizeHotels(
+  hotels: NonNullable<AgentRunResponse['partial_plan']>['accommodation_options'],
+): string {
   const prices = hotels.map((option) => option.nightly_price.amount).filter((amount) => amount > 0)
   if (!prices.length) {
     return `🏨 숙소 ${hotels.length}곳을 찾았어요.`
