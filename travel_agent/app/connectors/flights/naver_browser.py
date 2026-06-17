@@ -17,7 +17,6 @@ ROUTE_RE: Final = re.compile(
     r"/(?P<origin>[A-Z]{3})-(?P<destination>[A-Z]{3})-\d{8}"
 )
 ROUND_PRICE_RE: Final = re.compile(r"^왕복\s+[\d,]+원~$")
-BARE_PRICE_RE: Final = re.compile(r"^[\d,]+원~?$")
 AIRLINE_TOKENS: Final = ("항공", "에어", "진에어", "피치")
 CONTROL_LABELS: Final = {
     "왕복",
@@ -205,10 +204,7 @@ def _candidate_from_lines(
     if outbound is None:
         return None
     inbound = _find_time_pair(lines, outbound.end_index, price_index, destination, origin)
-    # 네이버 헤드라인 '왕복 ...원~'은 '2만원 카드/이벤트 할인'이 적용된 조건부 가격일 때가
-    # 많다. 그 바로 위 '할인 전 기준가'가 있으면 일반 사용자가 내는 가격으로 보정한다.
-    standard = _standard_price_before_discount(lines, start, price_index)
-    price = f"왕복 {standard}" if standard else lines[price_index]
+    price = lines[price_index]
     notes = [
         line
         for line in lines[max(start, price_index - 3) : min(len(lines), price_index + 3)]
@@ -269,27 +265,6 @@ def _find_round_price(lines: list[str], start: int) -> int | None:
     for index in range(start + 1, min(len(lines), start + 40)):
         if ROUND_PRICE_RE.match(lines[index]):
             return index
-    return None
-
-
-def _standard_price_before_discount(lines: list[str], start: int, price_index: int) -> str | None:
-    """'왕복 헤드라인가' 바로 위에 '할인'을 사이에 둔 기준가가 있으면 그 기준가를 돌려준다.
-
-    예) 722,600원~ / 2만원 할인 / 왕복 702,600원~  →  '722,600원~'(할인 전 일반가).
-    할인 패턴이 없으면 None(헤드라인가 유지). 다른 항공편 경계를 넘지 않는다.
-    """
-    saw_discount = False
-    for index in range(price_index - 1, max(start, price_index - 6) - 1, -1):
-        line = lines[index]
-        if "할인" in line:
-            saw_discount = True
-            continue
-        if "적립" in line:
-            continue
-        if saw_discount and BARE_PRICE_RE.match(line):
-            return line
-        if TIME_RE.match(line) or _looks_like_airline(line):
-            break
     return None
 
 
