@@ -71,7 +71,9 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
               )
             })}
           </div>
-          <p className="card-footnote">실시간 추출 가격 · 예약 전 가격·날짜 재확인 필요</p>
+          <p className="card-footnote">
+            1박가는 검색일(기본 날짜) 기준 참고가 · 여행 날짜 실제 요금은 예약 페이지에서 확인
+          </p>
         </>
       )}
     </section>
