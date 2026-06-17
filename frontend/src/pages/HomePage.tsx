@@ -16,6 +16,15 @@ import {
 } from '../utils/agentRunDisplay'
 import { errorMessage } from '../utils/errors'
 
+const EXAMPLE_PROMPTS = [
+  '삿포로 3박4일 여행 계획 짜줘',
+  '도쿄 7월 초중순 항공권 찾아줘',
+  '오사카 4박5일 숙소 추천해줘',
+  '다낭 가족여행 일정이랑 예산 짜줘',
+  '삿포로 스스키노 근처 4성급 호텔',
+  '방콕 맛집이랑 관광지 알려줘',
+] as const
+
 const SCOPE_ITEMS = [
   { key: 'flight', label: '항공권' },
   { key: 'accommodation', label: '숙소' },
@@ -177,9 +186,37 @@ export function HomePage() {
 
         <div className="chat-thread">
           {turns.length === 0 && !mutation.error && (
-            <div className="assistant-message idle-message">
-              <Bot aria-hidden="true" />
-              <p>여행 요청을 입력하면 코어 에이전트가 필요한 서브에이전트를 골라 계획을 짜줍니다.</p>
+            <div className="chat-empty">
+              <div className="chat-empty__intro">
+                <Bot aria-hidden="true" />
+                <div>
+                  <h2>어디로 떠나볼까요?</h2>
+                  <p>
+                    여행 요청을 입력하면 항공·숙소·일정·예산부터 비자·환율·교통권까지
+                    한 번에 정리해 드려요. 아래 예시를 눌러 바로 시작해도 좋아요.
+                  </p>
+                </div>
+              </div>
+              <div className="chat-empty__examples">
+                {EXAMPLE_PROMPTS.map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    className="example-chip"
+                    disabled={mutation.isPending}
+                    onClick={() =>
+                      handleSubmit({
+                        message: example,
+                        locale: 'ko-KR',
+                        currency: 'KRW',
+                        timezone: 'Asia/Seoul',
+                      })
+                    }
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {turns.map((turn, index) => {

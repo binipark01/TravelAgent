@@ -107,7 +107,7 @@ a {
 
 .app-main {
   margin: 0 auto;
-  max-width: 1480px;
+  max-width: 1680px;
   padding: 24px;
 }
 
@@ -1981,6 +1981,64 @@ legend {
   border-radius: 6px;
   background: rgba(37, 99, 235, 0.1);
   color: var(--accent, #2563eb);
+}
+
+/* 빈 상태 — 가운데 공백을 환영 문구 + 예시 프롬프트로 채운다 */
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 22px;
+  height: 100%;
+  min-height: 360px;
+  padding: 24px 8px;
+}
+.chat-empty__intro {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.chat-empty__intro svg {
+  width: 26px;
+  height: 26px;
+  color: var(--primary, #0f766e);
+}
+.chat-empty__intro h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+.chat-empty__intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 560px;
+}
+.chat-empty__examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.example-chip {
+  border: 1px solid var(--border);
+  background: var(--surface, #fff);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #1f2937);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.example-chip:hover:not(:disabled) {
+  background: rgba(15, 118, 110, 0.08);
+  border-color: var(--primary, #0f766e);
+  transform: translateY(-1px);
+}
+.example-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* 결과 카드 밀도 — 한눈에 보기 좋게 2단 + 압축 */
