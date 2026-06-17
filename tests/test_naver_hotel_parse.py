@@ -327,3 +327,19 @@ def test_curate_hotels_over_budget_fallback() -> None:
     # 예산 이내 숙소가 없으면 전체에서 저렴한 순으로 보여주고 경고 태그를 단다.
     assert [option.nightly_price.amount for option in curated] == [300_000, 371_672]
     assert any("이내 숙소가 없어" in note for note in curated[0].notes)
+
+
+def test_google_hotel_url_embeds_dates() -> None:
+    from datetime import date
+    from urllib.parse import unquote_plus
+
+    from travel_agent.app.connectors.accommodations.google_hotel_browser import (
+        build_google_hotel_url,
+    )
+
+    # 날짜 없으면 도시만(오늘 기준)
+    assert "삿포로 호텔" in unquote_plus(build_google_hotel_url("Sapporo"))
+    # 날짜 주면 쿼리에 자연어 날짜를 넣어 그 날짜 요금을 받게 한다
+    url = build_google_hotel_url("Sapporo", date(2026, 7, 7), date(2026, 7, 11))
+    q = unquote_plus(url)
+    assert "2026년 7월 7일" in q and "7월 11일" in q

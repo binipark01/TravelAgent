@@ -11,6 +11,7 @@ import math
 import re
 import subprocess
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
@@ -25,17 +26,38 @@ class GoogleHotelExtractionError(RuntimeError):
     pass
 
 
-def build_google_hotel_url(destination: str) -> str:
-    return f"https://www.google.com/travel/search?q={quote_plus(build_hotel_query(destination))}"
+def build_google_hotel_url(
+    destination: str, checkin: date | None = None, checkout: date | None = None
+) -> str:
+    """구글 호텔 검색 URL. 날짜를 주면 쿼리 텍스트에 넣어 그 날짜 기준 요금을 받는다.
+
+    구글 트래블은 checkin/checkout URL 파라미터를 무시하지만, 검색어에 자연어 날짜를
+    넣으면 파싱해서 체크인/체크아웃을 그 날짜로 설정한다(예: '삿포로 호텔 2026년 7월
+    7일 ~ 7월 11일' → 7/7~7/11 요금).
+    """
+    query = build_hotel_query(destination)
+    if checkin and checkout and checkout > checkin:
+        query = (
+            f"{query} {checkin.year}년 {checkin.month}월 {checkin.day}일 "
+            f"~ {checkout.month}월 {checkout.day}일"
+        )
+    return f"https://www.google.com/travel/search?q={quote_plus(query)}"
 
 
 @dataclass(frozen=True, slots=True)
 class GoogleHotelBrowserExtractor:
     timeout_seconds: int = 35
 
-    def extract(self, destination: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    def extract(
+        self,
+        destination: str,
+        *,
+        limit: int = 12,
+        checkin: date | None = None,
+        checkout: date | None = None,
+    ) -> list[dict[str, Any]]:
         script_path = Path(__file__).with_name("google_hotel_extract.mjs")
-        url = build_google_hotel_url(destination)
+        url = build_google_hotel_url(destination, checkin, checkout)
         command = ["node", str(script_path), url, str(self.timeout_seconds), str(limit)]
         try:
             completed = subprocess.run(

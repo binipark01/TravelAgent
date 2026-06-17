@@ -10,6 +10,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -205,6 +206,8 @@ def extract_live_accommodation_options(
     max_nightly_price: int | None = None,
     room_preference: str | None = None,
     request_text: str | None = None,
+    checkin: date | None = None,
+    checkout: date | None = None,
 ) -> list[AccommodationOption]:
     """네이버+구글 호텔 검색을 합쳐 실제 숙소만 추려서 정리한다(mock 미사용).
 
@@ -213,19 +216,9 @@ def extract_live_accommodation_options(
     확인·표시한다.
     """
     options: list[AccommodationOption] = []
+    dated = checkin is not None and checkout is not None
 
-    # 네이버 호텔
-    try:
-        for hotel in NaverHotelBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-            destination, limit=max(limit, 12)
-        ):
-            options.append(
-                hotel_to_option(hotel, destination, nights, currency, provider="naver_hotel")
-            )
-    except NaverHotelExtractionError:
-        pass
-
-    # 구글 호텔 (순환 import 방지를 위해 지연 import)
+    # 구글 호텔: 검색어에 날짜를 넣어 '그 날짜 기준 요금'을 받는다(성수기 등 반영). (지연 import)
     try:
         from travel_agent.app.connectors.accommodations.google_hotel_browser import (
             GoogleHotelBrowserExtractor,
@@ -233,13 +226,27 @@ def extract_live_accommodation_options(
         )
 
         for hotel in GoogleHotelBrowserExtractor(timeout_seconds=timeout_seconds).extract(
-            destination, limit=max(limit, 12)
+            destination, limit=max(limit, 12), checkin=checkin, checkout=checkout
         ):
             options.append(
                 hotel_to_option(hotel, destination, nights, currency, provider="google_hotel")
             )
     except GoogleHotelExtractionError:
         pass
+
+    # 네이버 호텔: 날짜를 못 받는다(검색일 기준). 날짜 지정 검색에선 구글의 날짜 정확가와
+    # 섞이면 싼 '오늘 가격'이 위로 올라와 오해를 부르므로, 날짜 미지정이거나 구글이 비었을
+    # 때만(폴백) 사용한다.
+    if not dated or not options:
+        try:
+            for hotel in NaverHotelBrowserExtractor(timeout_seconds=timeout_seconds).extract(
+                destination, limit=max(limit, 12)
+            ):
+                options.append(
+                    hotel_to_option(hotel, destination, nights, currency, provider="naver_hotel")
+                )
+        except NaverHotelExtractionError:
+            pass
 
     curated = _curate_hotels(
         options,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from travel_agent.app.connectors.accommodations.naver_hotel_browser import (
     extract_live_accommodation_options,
 )
@@ -58,6 +60,9 @@ class AccommodationAgent:
         # 실시간: 네이버 호텔 검색 화면을 브라우저로 분석해 실제 숙소만 사용한다.
         # 못 가져오면 mock으로 채우지 않고 비워 둔다(mock은 사용자에게 노출 금지).
         if self.live_enabled:
+            # 체크인=출발일, 체크아웃=출발일+숙박일 → 그 날짜 기준 실제 요금을 받는다.
+            checkin = brief.start_date
+            checkout = checkin + timedelta(days=nights) if checkin else None
             state.accommodation_options = extract_live_accommodation_options(
                 state.selected_destination,
                 nights=nights,
@@ -66,6 +71,8 @@ class AccommodationAgent:
                 max_nightly_price=_nightly_budget(brief),
                 room_preference=brief.accommodation_preference,
                 request_text=state.raw_user_message,
+                checkin=checkin,
+                checkout=checkout,
             )
             return state
 
