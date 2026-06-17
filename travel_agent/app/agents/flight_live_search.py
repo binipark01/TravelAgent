@@ -30,6 +30,23 @@ _TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
 _AIRLINE_NOISE = ("그래프", "변동", "추이", "차트", "가격대", "필터")
 
 
+def _trip_nights(brief: TripBrief, window_start) -> int:
+    """여행 박수를 정한다.
+
+    명시 기간(duration_nights)이 있으면 그대로 쓴다. 없을 때, 유연 날짜('초·중순' 등)나
+    넓은(>7박) 범위는 '여행 길이'가 아니라 '출발일 검색 창'이므로 기본 단기 일정으로
+    본다. 이렇게 안 하면 '7월 초중순 항공권'이 2주짜리 왕복으로 잡힌다.
+    """
+    if brief.duration_nights:
+        return max(brief.duration_nights, 1)
+    span = (brief.end_date - window_start).days if brief.end_date else None
+    if span is not None and 1 <= span <= 7 and not brief.flexible_dates:
+        return span
+    if brief.duration_days:
+        return max(brief.duration_days - 1, 1)
+    return 4
+
+
 def extract_live_flight_options(
     brief: TripBrief,
     *,
@@ -48,11 +65,7 @@ def extract_live_flight_options(
     window_start = brief.start_date
     if window_start is None:
         return []
-    nights = brief.duration_nights
-    if nights is None and brief.end_date is not None:
-        nights = max((brief.end_date - window_start).days, 1)
-    if not nights or nights < 1:
-        nights = 4
+    nights = _trip_nights(brief, window_start)
 
     window_start, window_end = _search_window(brief, nights, request_text)
     departures = _candidate_departures(window_start, window_end, nights, max_date_searches)

@@ -155,6 +155,38 @@ def test_search_window_expands_for_flexible_dates() -> None:
     assert all(departure >= date(2026, 7, 7) for departure in deps)
 
 
+def test_trip_nights_treats_flexible_window_as_search_range() -> None:
+    from travel_agent.app.agents.flight_live_search import _trip_nights
+
+    # '7월 초중순'처럼 유연한 넓은 창 + 기간 미지정 → 2주짜리 여행이 아니라 기본 단기(4박).
+    flexible = TripBrief(
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 15),
+        flexible_dates=True, currency="KRW",
+    )
+    assert _trip_nights(flexible, date(2026, 7, 1)) == 4
+
+    # 명시 기간은 그대로.
+    explicit = TripBrief(
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 15),
+        duration_nights=4, currency="KRW",
+    )
+    assert _trip_nights(explicit, date(2026, 7, 1)) == 4
+
+    # 좁은(<=7박) 정확한 범위는 그 길이를 쓴다.
+    exact = TripBrief(
+        start_date=date(2026, 7, 3), end_date=date(2026, 7, 7),
+        flexible_dates=False, currency="KRW",
+    )
+    assert _trip_nights(exact, date(2026, 7, 3)) == 4
+
+    # 넓은(>7박) 비유연 범위도 검색창으로 보고 기본 단기.
+    wide = TripBrief(
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 20),
+        flexible_dates=False, currency="KRW",
+    )
+    assert _trip_nights(wide, date(2026, 7, 1)) == 4
+
+
 def test_constraint_direction() -> None:
     assert _constraint_direction("6일 이후 출발로 찾아줘") == "after"
     assert _constraint_direction("10일 이전 출발로 찾아줘") == "before"
