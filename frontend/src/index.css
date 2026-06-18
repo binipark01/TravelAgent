@@ -2399,6 +2399,40 @@ legend {
   border: 0;
 }
 
+/* 지도로 보낼 수 있는(클릭 가능한) 장소 항목 */
+.place-clickable {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.place-clickable:hover {
+  background: var(--primary-soft, rgba(15, 118, 110, 0.08));
+}
+.place-clickable:focus-visible {
+  outline: 2px solid var(--primary, #0f766e);
+  outline-offset: 1px;
+}
+.place-active {
+  background: var(--primary-soft, rgba(15, 118, 110, 0.14));
+  box-shadow: inset 2px 0 0 var(--primary, #0f766e);
+}
+
+/* 지도 카드: 포커스 해제(전체 지도) 버튼 */
+.map-reset {
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+.map-reset:hover {
+  background: var(--surface-soft, rgba(148, 163, 184, 0.1));
+}
+
 /* 교통권 카드 */
 .pass-banner {
   display: flex;

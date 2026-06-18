@@ -7,8 +7,10 @@ import {
   formatMoney,
   transportModeLabel,
 } from '../utils/format'
+import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
 export function DayPlanCard({ day }: { day: DayPlan }) {
+  const focus = useMapFocus()
   return (
     <article className="day-card">
       <header className="day-card-header">
@@ -24,21 +26,31 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
         {day.items.map((item) => (
           <ItineraryItemRow item={item} key={item.item_id} />
         ))}
-        {day.meals.map((meal) => (
-          <div className="timeline-row muted" key={meal.item_id}>
-            <time>
-              {meal.start_time} - {meal.end_time}
-            </time>
-            <div>
-              <strong>{cleanDisplayText(meal.title)}</strong>
-              <p>
-                {mealTypeLabel(meal.meal_type)}
-                {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
-              </p>
-              {meal.notes[0] && <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>}
+        {day.meals.map((meal) => {
+          const trig = placeTriggerProps(focus, {
+            label: cleanDisplayText(meal.title),
+            area: cleanDisplayText(meal.area),
+          })
+          return (
+            <div
+              className={`timeline-row muted ${trig.className}`.trim()}
+              key={meal.item_id}
+              {...trig.interactive}
+            >
+              <time>
+                {meal.start_time} - {meal.end_time}
+              </time>
+              <div>
+                <strong>{cleanDisplayText(meal.title)}</strong>
+                <p>
+                  {mealTypeLabel(meal.meal_type)}
+                  {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
+                </p>
+                {meal.notes[0] && <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {day.transfers.map((transfer) => (
           <div className="timeline-row transfer-row" key={transfer.item_id}>
             <time>
@@ -85,8 +97,15 @@ function mealTypeLabel(mealType: string): string {
 }
 
 export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
+  const focus = useMapFocus()
+  const trig = placeTriggerProps(focus, {
+    label: cleanDisplayText(item.title),
+    area: item.location.area ?? item.location.name,
+    lat: item.location.latitude,
+    lng: item.location.longitude,
+  })
   return (
-    <div className="timeline-row" key={item.item_id}>
+    <div className={`timeline-row ${trig.className}`.trim()} {...trig.interactive}>
       <time>
         {item.start_time} - {item.end_time}
       </time>

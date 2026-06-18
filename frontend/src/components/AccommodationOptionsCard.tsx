@@ -1,10 +1,12 @@
 import type { AccommodationOption } from '../types/trip'
 import { cleanDisplayText, formatMoney } from '../utils/format'
 import { EmptyState } from './EmptyState'
+import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
 const TAG_MARK = /[💰📍✅⚠️]|ℹ️/
 
 export function AccommodationOptionsCard({ options }: { options: AccommodationOption[] }) {
+  const focus = useMapFocus()
   return (
     <section className="card">
       <div className="section-heading">
@@ -24,9 +26,15 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
                 ? tagNote.split('·').map((part) => part.trim()).filter(Boolean)
                 : []
               const url = option.metadata.source_ref.source_url
+              const trig = placeTriggerProps(focus, {
+                label: cleanDisplayText(option.name),
+                area: option.location.area,
+                lat: option.location.latitude,
+                lng: option.location.longitude,
+              })
               return (
                 <article className="hotel-row" key={option.option_id}>
-                  <div className="hotel-row__head">
+                  <div className={`hotel-row__head ${trig.className}`.trim()} {...trig.interactive}>
                     <span className="hotel-name">{cleanDisplayText(option.name)}</span>
                     <strong className="hotel-price">
                       {formatMoney(option.nightly_price)}

@@ -1,6 +1,7 @@
 import type { POIOption } from '../types/trip'
 import { cleanDisplayText } from '../utils/format'
 import { EmptyState } from './EmptyState'
+import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
 interface Props {
   options: POIOption[]
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function RestaurantOptionsCard({ options, eyebrow = '맛집', title = '식당 후보' }: Props) {
+  const focus = useMapFocus()
   return (
     <section className="card">
       <div className="section-heading">
@@ -24,9 +26,15 @@ export function RestaurantOptionsCard({ options, eyebrow = '맛집', title = '�
           <ul className="poi-list">
             {options.map((option) => {
               const url = option.metadata.source_ref.source_url
+              const trig = placeTriggerProps(focus, {
+                label: cleanDisplayText(option.title),
+                area: option.area || option.location.area,
+                lat: option.location.latitude,
+                lng: option.location.longitude,
+              })
               return (
                 <li className="poi-row" key={option.poi_id}>
-                  <div className="poi-row__main">
+                  <div className={`poi-row__main ${trig.className}`.trim()} {...trig.interactive}>
                     <span className="poi-name">{cleanDisplayText(option.title)}</span>
                     {option.type && <span className="poi-type">{cleanDisplayText(option.type)}</span>}
                   </div>
