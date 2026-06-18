@@ -67,6 +67,8 @@ class TripPlanState(StrictBaseModel):
     audit_log: list[AuditEvent] = Field(default_factory=list)
     # 대화형 질문("오타루 볼거 뭐있냐")에 LLM이 바로 답한 텍스트(계획 요약 대신 표시).
     assistant_message: str | None = None
+    # 사용자가 명시 안 해 기본값으로 추정한 항목(출발지·날짜·인원·예산 등) → 보완 제안용.
+    input_suggestions: list[str] = Field(default_factory=list)
     status: TripStatus = TripStatus.intake
 
 

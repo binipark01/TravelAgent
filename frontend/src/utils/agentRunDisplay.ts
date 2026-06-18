@@ -73,6 +73,13 @@ export function buildAgentRunAnswer(data: AgentRunResponse): string {
     lines.push(`💰 예상 총비용 약 ₩${total} (1인 ₩${per})`)
   }
 
+  const suggestions = plan?.input_suggestions ?? []
+  if (lines.length > 1 && suggestions.length) {
+    lines.push(
+      `💡 ${suggestions.join(' · ')}을(를) 알려주시면 더 정확히 맞춰드려요. (지금은 기본값으로 추정했어요)`,
+    )
+  }
+
   if (lines.length > 1) {
     return lines.join('\n')
   }

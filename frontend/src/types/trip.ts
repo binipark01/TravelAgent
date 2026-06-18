@@ -112,6 +112,7 @@ export interface TripPlanState {
   source_refs: SourceRef[]
   evidence_refs: string[]
   assistant_message?: string | null
+  input_suggestions?: string[]
   status: TripStatus
 }
 

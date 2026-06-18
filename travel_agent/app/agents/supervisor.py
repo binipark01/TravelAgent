@@ -379,10 +379,27 @@ class TravelSupervisorAgent:
         return response
 
     def _ensure_minimum_brief(self, state: TripPlanState) -> None:
-        """후속 질문 없이 계획이 항상 완성되도록 빈 필드를 조용히 채운다."""
+        """후속 질문 없이 계획이 항상 완성되도록 빈 필드를 조용히 채운다.
+
+        대신 사용자가 명시하지 않아 기본값으로 추정한 항목을 input_suggestions에 남겨
+        '이걸 알려주면 더 정확해진다'고 제안할 수 있게 한다.
+        """
         brief = state.brief
         if brief is None:
             return
+        # 채우기 전에 '추정한 항목'을 기록한다(목적지는 단일/대화에서 따로 다룸).
+        suggestions: list[str] = []
+        if not brief.origin:
+            suggestions.append("출발지")
+        if not brief.start_date:
+            suggestions.append("출발 날짜")
+        if brief.travelers is None and not brief.traveler_count and not brief.adults:
+            suggestions.append("인원")
+        if brief.budget_total is None and brief.budget_per_person is None:
+            suggestions.append("예산")
+        if not brief.must_include:
+            suggestions.append("관심사(맛집·쇼핑·관광 등)")
+        state.input_suggestions = suggestions
         if not brief.destinations:
             brief.destinations = ["Japan"]
         if not brief.destination_hint:
