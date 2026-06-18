@@ -141,3 +141,18 @@ def test_agent_run_records_accommodation_source_candidates(
     assert {"booking_demand", "agoda_partner", "google_hotels_partner"} <= rejected_sources
     assert "airbnb_public_page" in rejected_sources
     assert "mock" in discovered_sources
+
+
+def test_hotel_booking_url_includes_trip_dates() -> None:
+    from travel_agent.app.connectors.accommodations.google_hotel_browser import (
+        build_hotel_booking_url,
+    )
+
+    dated = build_hotel_booking_url("삿포로 그랑벨 호텔", date(2026, 6, 19), date(2026, 6, 22))
+    # 예약 링크에 여행 날짜가 들어가 오늘이 아닌 체크인/체크아웃으로 열린다.
+    assert "2026" in dated
+    assert "6%EC%9B%94+19%EC%9D%BC" in dated  # '6월 19일'
+    assert "6%EC%9B%94+22%EC%9D%BC" in dated  # '6월 22일'
+
+    undated = build_hotel_booking_url("삿포로 그랑벨 호텔")
+    assert "2026" not in undated

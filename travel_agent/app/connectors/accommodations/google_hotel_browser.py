@@ -44,6 +44,23 @@ def build_google_hotel_url(
     return f"https://www.google.com/travel/search?q={quote_plus(query)}"
 
 
+def build_hotel_booking_url(
+    hotel_name: str, checkin: date | None = None, checkout: date | None = None
+) -> str:
+    """특정 호텔의 예약 링크. 날짜를 주면 쿼리 텍스트에 넣어 그 날짜로 열리게 한다.
+
+    도시 전체 검색 결과(날짜 없음)가 아니라 '그 호텔 + 여행 날짜'로 열어서, 예약을
+    누르면 오늘이 아니라 여행 체크인/체크아웃이 채워진 상태로 보이게 한다.
+    """
+    query = hotel_name
+    if checkin and checkout and checkout > checkin:
+        query = (
+            f"{hotel_name} {checkin.year}년 {checkin.month}월 {checkin.day}일 "
+            f"~ {checkout.month}월 {checkout.day}일"
+        )
+    return f"https://www.google.com/travel/search?q={quote_plus(query)}"
+
+
 @dataclass(frozen=True, slots=True)
 class GoogleHotelBrowserExtractor:
     timeout_seconds: int = 35
@@ -82,7 +99,6 @@ class GoogleHotelBrowserExtractor:
             raise GoogleHotelExtractionError(
                 "구글 호텔 화면 출력 형식이 올바르지 않습니다."
             ) from exc
-        final_url = payload.get("final_url") or url
         results: list[dict[str, Any]] = []
         for hotel in payload.get("hotels", []):
             name = (hotel.get("name") or "").strip()
@@ -97,7 +113,8 @@ class GoogleHotelBrowserExtractor:
                     "star": hotel.get("star"),
                     "reviews": hotel.get("reviews"),
                     "amenities": hotel.get("amenities") or [],
-                    "source_url": final_url,
+                    # 도시 검색 URL이 아니라 '그 호텔 + 여행 날짜' 예약 링크를 넣는다.
+                    "source_url": build_hotel_booking_url(name, checkin, checkout),
                 }
             )
             if len(results) >= limit:
