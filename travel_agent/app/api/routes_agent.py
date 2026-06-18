@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
-from travel_agent.app.db.session import get_db
+from travel_agent.app.db.session import get_db, get_session_factory
 from travel_agent.app.schemas.agent import (
     AgentEvent,
     AgentRunCreateRequest,
@@ -17,11 +17,23 @@ from travel_agent.app.services.agent_service import AgentService
 router = APIRouter(prefix="/agent/runs", tags=["agent"])
 
 
+def _execute_run_in_background(run_id: str, message: str | None) -> None:
+    """응답을 보낸 뒤 자체 세션에서 무거운 실행을 수행한다(요청 세션은 이미 닫힘)."""
+    factory = get_session_factory()
+    with factory() as session:
+        AgentService(session).execute_run(run_id, message=message)
+
+
 @router.post("", response_model=AgentRunResponse)
 def create_agent_run(
-    request: AgentRunCreateRequest, db: Session = Depends(get_db)
+    request: AgentRunCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ) -> AgentRunResponse:
-    return AgentService(db).create_run(request)
+    # run_id를 즉시 돌려주고, 실제 계획 수립은 백그라운드에서. 프론트는 GET으로 폴링.
+    response = AgentService(db).begin_run(request)
+    background_tasks.add_task(_execute_run_in_background, response.run_id, None)
+    return response
 
 
 @router.get("", response_model=list[AgentRunSummary])
@@ -38,9 +50,13 @@ def get_agent_run(run_id: str, db: Session = Depends(get_db)) -> AgentRunDetailR
 def add_agent_message(
     run_id: str,
     request: AgentRunMessageRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> AgentRunDetailResponse:
-    return AgentService(db).add_message(run_id, request)
+    # 이어가기 턴도 즉시 반환 + 백그라운드 실행 → 프론트가 같은 run을 폴링.
+    detail = AgentService(db).begin_continue(run_id, request.message)
+    background_tasks.add_task(_execute_run_in_background, run_id, request.message)
+    return detail
 
 
 @router.post("/{run_id}/continue", response_model=AgentRunDetailResponse)

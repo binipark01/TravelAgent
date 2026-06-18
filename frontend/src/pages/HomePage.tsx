@@ -1,12 +1,17 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
 import { Fragment, useEffect, useState } from 'react'
-import { addAgentRunMessage, createAgentRun } from '../api/agent'
+import { addAgentRunMessage, createAgentRun, getAgentRun } from '../api/agent'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
 import { PlanCards } from '../components/PlanCards'
 import { TripSummaryHeader } from '../components/TripSummaryHeader'
-import type { AgentRunDetailResponse, AgentRunResponse } from '../types/agent'
+import type {
+  AgentRunDetailResponse,
+  AgentRunResponse,
+  AgentRunStatus,
+  AgentStep,
+} from '../types/agent'
 import type { LLMAnswerRequest } from '../types/llm'
 import {
   RUN_STATUS_LABELS,
@@ -64,6 +69,9 @@ export function HomePage() {
   const [turns, setTurns] = useState<ChatTurn[]>([])
   // 같은 세션의 run을 이어가 일정·후보가 턴 사이에 유지되게 한다(상태 영속).
   const [runId, setRunId] = useState<string | null>(null)
+  // 현재 실행 중인 run을 폴링한다 → '되는 것부터' 카드가 순서대로 채워진다.
+  const [pollingRunId, setPollingRunId] = useState<string | null>(null)
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: async (vars: {
@@ -71,42 +79,79 @@ export function HomePage() {
       turnId: string
     }): Promise<AgentRunResponse> => {
       if (runId) {
-        // 이어가기 턴: 같은 run에 메시지 추가 → 백엔드가 기존 상태에 델타만 반영.
+        // 이어가기 턴: 같은 run에 메시지 추가 → 백엔드가 즉시 run_id 반환, 실행은 백그라운드.
         const detail = await addAgentRunMessage(runId, { message: vars.payload.message })
         return adaptDetail(detail)
       }
-      // 첫 턴: 새 run 시작.
+      // 첫 턴: 새 run 시작(즉시 run_id 반환).
       const history = turns.map((turn) => turn.message)
       return createAgentRun({ ...vars.payload, history })
     },
     onSuccess: (data, vars) => {
-      if (data.run_id) setRunId(data.run_id)
+      if (data.run_id) {
+        setRunId(data.run_id)
+        // 아직 끝나지 않았으면 폴링을 시작한다.
+        if (!isTerminalStatus(data.status)) setPollingRunId(data.run_id)
+        else setActiveTurnId(null)
+      }
       setTurns((prev) =>
         prev.map((turn) => (turn.id === vars.turnId ? { ...turn, response: data } : turn)),
       )
     },
-    onError: (error, vars) =>
+    onError: (error, vars) => {
+      setActiveTurnId(null)
+      setPollingRunId(null)
       setTurns((prev) =>
         prev.map((turn) =>
           turn.id === vars.turnId ? { ...turn, error: errorMessage(error) } : turn,
         ),
-      ),
+      )
+    },
   })
+
+  // 실행 중인 run을 ~1.2초마다 폴링해 부분 결과를 가져온다.
+  // 종료되면 아래 useEffect가 pollingRunId를 비워 폴링을 멈춘다(버전 무관한 값 형태).
+  const pollQuery = useQuery({
+    queryKey: ['agentRun', pollingRunId],
+    enabled: pollingRunId != null,
+    queryFn: () => getAgentRun(pollingRunId as string),
+    refetchInterval: pollingRunId != null ? 1200 : false,
+    // 탭이 백그라운드여도 폴링을 멈추지 않는다(실행 중 다른 탭을 봐도 갱신).
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: false,
+    gcTime: 0,
+  })
+
+  useEffect(() => {
+    const detail = pollQuery.data
+    if (!detail || !activeTurnId) return
+    const response = adaptDetail(detail)
+    setTurns((prev) =>
+      prev.map((turn) => (turn.id === activeTurnId ? { ...turn, response } : turn)),
+    )
+    if (isTerminalStatus(detail.run.status)) {
+      setPollingRunId(null)
+      setActiveTurnId(null)
+    }
+  }, [pollQuery.data, activeTurnId])
 
   function handleSubmit(payload: LLMAnswerRequest) {
     const turnId = nextTurnId()
+    setActiveTurnId(turnId)
     setTurns((prev) => [...prev, { id: turnId, message: payload.message }])
     mutation.mutate({ payload, turnId })
   }
 
-  // 중앙 캔버스/좌측 패널은 가장 최근에 '완료된' 응답을 기준으로 보여준다.
+  // 실행이 진행 중인지(POST 대기 또는 폴링 중) — 진행 표시·로딩 상태에 쓴다.
+  const isRunning = activeTurnId != null
+  // 중앙 캔버스/좌측 패널은 가장 최근에 응답이 있는 턴을 기준으로 보여준다(폴링 중 실시간 갱신).
   const lastResolved = [...turns].reverse().find((turn) => turn.response)?.response
   const plan = lastResolved?.partial_plan
   const summary = lastResolved?.state_summary
   const firstWeather = plan?.optimized_itinerary?.days?.[0]?.weather ?? null
   const selectedAgents = lastResolved ? coreSelectedAgents(lastResolved) : []
   const latestMessage = turns.length > 0 ? turns[turns.length - 1].message : null
-  const statusBadge = mutation.isPending
+  const statusBadge = isRunning
     ? 'agent 실행 중'
     : lastResolved
       ? (RUN_STATUS_LABELS[lastResolved.status] ?? lastResolved.status)
@@ -157,11 +202,12 @@ export function HomePage() {
         {plan ? (
           <>
             <TripSummaryHeader summary={summary} weather={firstWeather} />
+            {isRunning && <LiveProgress response={lastResolved} variant="banner" />}
             <PlanCards plan={plan} />
           </>
-        ) : mutation.isPending ? (
+        ) : isRunning ? (
           <div className="canvas-empty">
-            <RunProgress />
+            <LiveProgress response={lastResolved} />
           </div>
         ) : (
           <div className="canvas-empty">
@@ -199,7 +245,7 @@ export function HomePage() {
                     key={example}
                     type="button"
                     className="example-chip"
-                    disabled={mutation.isPending}
+                    disabled={isRunning}
                     onClick={() =>
                       handleSubmit({
                         message: example,
@@ -215,62 +261,96 @@ export function HomePage() {
               </div>
             </div>
           )}
-          {turns.map((turn, index) => {
-            const pending =
-              index === turns.length - 1 && mutation.isPending && !turn.response && !turn.error
+          {turns.map((turn) => {
+            const active = turn.id === activeTurnId
             return (
               <Fragment key={turn.id}>
                 <div className="user-message">
                   <p>{turn.message}</p>
                 </div>
-                {pending && (
+                {active && (
                   <div className="assistant-message">
                     <Clock3 aria-hidden="true" />
-                    <RunProgress />
+                    <LiveProgress response={turn.response} />
                   </div>
                 )}
                 {turn.error && <ErrorState message={turn.error} />}
-                {turn.response && <AssistantAnswer data={turn.response} />}
+                {!active && turn.response && <AssistantAnswer data={turn.response} />}
               </Fragment>
             )
           })}
         </div>
 
         <div className="chat-composer-bar">
-          <AgentCommandBox isSubmitting={mutation.isPending} onSubmit={handleSubmit} />
+          <AgentCommandBox isSubmitting={isRunning} onSubmit={handleSubmit} />
         </div>
       </section>
     </div>
   )
 }
 
-const RUN_STAGES = [
-  '요청을 분석하고 있어요',
-  '✈️ 항공권을 검색하고 있어요 (네이버·구글)',
-  '🏨 숙소를 찾고 있어요',
-  '🍴 맛집·관광지를 모으고 있어요',
-  '🗓 일정·예산을 정리하고 있어요',
+const TERMINAL_STATUSES: AgentRunStatus[] = ['completed', 'failed', 'waiting_for_user']
+function isTerminalStatus(status: AgentRunStatus): boolean {
+  return TERMINAL_STATUSES.includes(status)
+}
+
+// 진행 단계 → 실제 에이전트 매핑. steps/current_step으로 done/active/skipped/todo를 판정한다.
+const PROGRESS_STAGES: { label: string; agents: string[] }[] = [
+  { label: '요청 분석', agents: ['IntakeAgent', 'DestinationDiscoveryAgent'] },
+  { label: '✈️ 항공권 검색', agents: ['FlightAgent'] },
+  { label: '🏨 숙소 검색', agents: ['AccommodationAgent'] },
+  { label: '🍴 맛집·관광지', agents: ['RestaurantAgent'] },
+  { label: '🗓 일정·예산 정리', agents: ['RouteAgent', 'BudgetAgent'] },
+  { label: '📋 마무리', agents: ['PresentationAgent'] },
 ]
 
-function RunProgress() {
-  const [index, setIndex] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex((prev) => Math.min(prev + 1, RUN_STAGES.length - 1))
-    }, 8000)
-    return () => clearInterval(timer)
-  }, [])
+type StageStatus = 'done' | 'active' | 'skipped' | 'todo'
+
+function stageStatus(
+  steps: AgentStep[],
+  currentStep: string | null | undefined,
+  agents: string[],
+): StageStatus {
+  const relevant = steps.filter((step) => agents.includes(step.agent_name))
+  if (agents.includes(currentStep ?? '') || relevant.some((step) => step.status === 'running')) {
+    return 'active'
+  }
+  if (relevant.some((step) => step.status === 'completed')) return 'done'
+  if (relevant.length > 0 && relevant.every((step) => step.status === 'skipped')) return 'skipped'
+  return 'todo'
+}
+
+/** 실제 에이전트 진행(steps/current_step/status)으로 단계별 상태를 표시한다. */
+function LiveProgress({
+  response,
+  variant,
+}: {
+  response?: AgentRunResponse
+  variant?: 'banner'
+}) {
+  const steps = response?.steps ?? []
+  const current = response?.current_step
+  const done = response?.status != null && isTerminalStatus(response.status)
+  const statuses = PROGRESS_STAGES.map((stage) => {
+    const s = stageStatus(steps, current, stage.agents)
+    return done && s !== 'skipped' ? 'done' : s
+  })
+  // 실행 중인데 active로 잡힌 단계가 없으면(시작 직후) 첫 미진행 단계를 active로.
+  if (!done && !statuses.includes('active')) {
+    const firstTodo = statuses.indexOf('todo')
+    if (firstTodo >= 0) statuses[firstTodo] = 'active'
+  }
   return (
-    <div className="run-progress">
-      {RUN_STAGES.map((stage, idx) => {
-        const status = idx < index ? 'done' : idx === index ? 'active' : 'todo'
-        return (
-          <div className={`run-progress-step ${status}`} key={stage}>
-            <span className="run-progress-dot" aria-hidden="true" />
-            <span>{stage}</span>
-          </div>
-        )
-      })}
+    <div className={`run-progress${variant === 'banner' ? ' run-progress--banner' : ''}`}>
+      {PROGRESS_STAGES.map((stage, idx) => (
+        <div className={`run-progress-step ${statuses[idx]}`} key={stage.label}>
+          <span className="run-progress-dot" aria-hidden="true" />
+          <span>
+            {stage.label}
+            {statuses[idx] === 'skipped' ? ' · 해당 없음' : ''}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }

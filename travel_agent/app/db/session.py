@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -22,7 +22,24 @@ def configure_database(database_url: str | None = None) -> None:
         if url.endswith(":memory:"):
             kwargs["poolclass"] = StaticPool
     _engine = create_engine(url, future=True, **kwargs)
+    if url.startswith("sqlite"):
+        _apply_sqlite_pragmas(_engine, in_memory=url.endswith(":memory:"))
     _session_factory = sessionmaker(bind=_engine, autoflush=False, autocommit=False, future=True)
+
+
+def _apply_sqlite_pragmas(engine: Engine, *, in_memory: bool) -> None:
+    # 백그라운드 실행(쓰기)과 폴링(읽기)이 겹쳐도 'database is locked'가 나지 않도록
+    # WAL + busy_timeout을 모든 연결에 적용한다. (:memory:는 WAL 비대상)
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _record) -> None:  # noqa: ANN001
+        cursor = dbapi_connection.cursor()
+        try:
+            if not in_memory:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+        finally:
+            cursor.close()
 
 
 def get_engine() -> Engine:

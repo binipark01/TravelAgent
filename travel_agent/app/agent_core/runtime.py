@@ -47,7 +47,7 @@ class AgentRuntime:
         )
         self.legacy_supervisor = LegacyPlanningSupervisor(build_run_context(self.settings))
 
-    def start_run(
+    def begin_run(
         self,
         message: str,
         *,
@@ -57,6 +57,7 @@ class AgentRuntime:
         timezone: str = "Asia/Seoul",
         history: list[str] | None = None,
     ) -> AgentRunResponse:
+        """run/trip을 만들고 run_id를 즉시 돌려준다. 무거운 실행은 execute_run이 맡는다."""
         # 과거 메시지 + 현재 메시지 순으로 보관해 intake가 대화 문맥을 참고하게 한다.
         prior = [m for m in (history or []) if m and m.strip()]
         state = TripPlanState(
@@ -84,25 +85,53 @@ class AgentRuntime:
             "사용자가 여행 요청을 입력했습니다.",
             {"message": message},
         )
-        self._execute(ctx, state)
         self.session.commit()
         persisted_run = self.run_repository.get_run(run.run_id)
-        return AgentRunResponse(
-            trip_id=state.trip_id,
-            run_id=run.run_id,
-            status=persisted_run.status,
-            current_step=persisted_run.current_step,
-            steps=self.run_repository.list_steps(run.run_id),
-            missing_fields=state.missing_fields,
-            questions=[self._question_for(field) for field in state.missing_fields],
-            state_summary=self._state_summary(state),
-            partial_plan=state,
-            events=self.run_repository.list_events(run.run_id),
-        )
+        return self._run_response(persisted_run, state)
 
-    def continue_run(self, run_id: str, user_message: str | None = None) -> AgentRunDetailResponse:
+    def execute_run(self, run_id: str, *, message: str | None = None) -> AgentRunResponse:
+        """begin_run/begin_continue로 만들어진 run을 실제로 실행한다(백그라운드 태스크용)."""
         run = self.run_repository.get_run(run_id)
         state = self.trip_repository.load_latest_state(run.trip_id)
+        ctx = self._build_context(run_id, state)
+        try:
+            self._execute(ctx, state, message=message)
+        except Exception:
+            # _execute가 실패 상태/에러 이벤트를 기록했으니 영속화해 폴링이 실패를 본다.
+            self.session.commit()
+            raise
+        self.session.commit()
+        persisted_run = self.run_repository.get_run(run_id)
+        return self._run_response(persisted_run, state)
+
+    def start_run(
+        self,
+        message: str,
+        *,
+        user_id: str | None = None,
+        locale: str = "ko-KR",
+        currency: str = "KRW",
+        timezone: str = "Asia/Seoul",
+        history: list[str] | None = None,
+    ) -> AgentRunResponse:
+        """동기 경로: begin + execute를 한 번에 수행해 완성된 응답을 반환한다."""
+        started = self.begin_run(
+            message,
+            user_id=user_id,
+            locale=locale,
+            currency=currency,
+            timezone=timezone,
+            history=history,
+        )
+        return self.execute_run(started.run_id)
+
+    def begin_continue(
+        self, run_id: str, user_message: str | None = None
+    ) -> AgentRunDetailResponse:
+        """이어가기 턴을 준비한다: 메시지 반영 + run을 running으로 표시하고 즉시 반환."""
+        run = self.run_repository.get_run(run_id)
+        state = self.trip_repository.load_latest_state(run.trip_id)
+        ctx = self._build_context(run_id, state)
         if user_message:
             state.raw_user_message = f"{state.raw_user_message}\n{user_message}"
             state.raw_user_messages.append(user_message)
@@ -112,16 +141,36 @@ class AgentRuntime:
                 "User supplied additional agent details.",
                 actor="user",
             )
-        ctx = self._build_context(run_id, state)
-        if user_message:
             ctx.event_bus.emit(
                 AgentEventType.user_message,
                 "사용자가 추가 정보를 입력했습니다.",
                 {"message": user_message},
             )
-        self._execute(ctx, state, message=user_message)
+        self.run_repository.update_run(run_id, status=AgentRunStatus.running, current_step=None)
+        # 추가 메시지가 반영된 스냅샷을 저장해 execute_run/폴링이 최신 상태를 읽게 한다.
+        ctx.checkpoint_store.save(state)
         self.session.commit()
         return self.get_run(run_id)
+
+    def continue_run(self, run_id: str, user_message: str | None = None) -> AgentRunDetailResponse:
+        """동기 경로: 이어가기 준비 + 실행을 한 번에 수행한다."""
+        self.begin_continue(run_id, user_message)
+        self.execute_run(run_id, message=user_message)
+        return self.get_run(run_id)
+
+    def _run_response(self, run: AgentRun, state: TripPlanState) -> AgentRunResponse:
+        return AgentRunResponse(
+            trip_id=state.trip_id,
+            run_id=run.run_id,
+            status=run.status,
+            current_step=run.current_step,
+            steps=self.run_repository.list_steps(run.run_id),
+            missing_fields=state.missing_fields,
+            questions=[self._question_for(field) for field in state.missing_fields],
+            state_summary=self._state_summary(state),
+            partial_plan=state,
+            events=self.run_repository.list_events(run.run_id),
+        )
 
     def get_run(self, run_id: str) -> AgentRunDetailResponse:
         run = self.run_repository.get_run(run_id)
@@ -191,6 +240,9 @@ class AgentRuntime:
             trip_id=state.trip_id,
             run_id=ctx.run_id,
             repository=self.run_repository,
+            state=state,
+            checkpoint_store=ctx.checkpoint_store,
+            session=self.session,
         )
         try:
             self.run_repository.update_run(ctx.run_id, status=AgentRunStatus.running)
@@ -323,10 +375,30 @@ class AgentRuntime:
 
 
 class RuntimeRecorder(AgentRunRecorder):
-    def __init__(self, *, trip_id: str, run_id: str, repository: AgentRunRepository) -> None:
+    def __init__(
+        self,
+        *,
+        trip_id: str,
+        run_id: str,
+        repository: AgentRunRepository,
+        state: TripPlanState | None = None,
+        checkpoint_store: CheckpointStore | None = None,
+        session: Session | None = None,
+    ) -> None:
         self.trip_id = trip_id
         self.run_id = run_id
         self.repository = repository
+        # 아래 셋이 모두 있으면 에이전트마다 부분 상태를 저장+커밋해
+        # 폴링하는 클라이언트가 '되는 것부터' 볼 수 있게 한다.
+        self.state = state
+        self.checkpoint_store = checkpoint_store
+        self.session = session
+
+    def _flush(self, *, checkpoint: bool) -> None:
+        if checkpoint and self.checkpoint_store is not None and self.state is not None:
+            self.checkpoint_store.save(self.state)
+        if self.session is not None:
+            self.session.commit()
 
     def start_step(self, agent_name: str, input_summary: str) -> str:
         step_id = new_id("step")
@@ -345,6 +417,8 @@ class RuntimeRecorder(AgentRunRecorder):
             )
         )
         self.event("agent_started", f"{agent_name} 시작", {"agent_name": agent_name})
+        # 시작 시점에 진행 표시(현재 단계)를 바로 보이게 커밋한다(상태 저장은 불필요).
+        self._flush(checkpoint=False)
         return step_id
 
     def complete_step(
@@ -368,6 +442,8 @@ class RuntimeRecorder(AgentRunRecorder):
             f"{step.agent_name} 완료",
             {"agent_name": step.agent_name, "output_summary": output_summary},
         )
+        # 누적된 부분 결과를 스냅샷으로 저장 + 커밋 → 폴링이 즉시 본다.
+        self._flush(checkpoint=True)
 
     def skip_step(self, agent_name: str, reason: str) -> None:
         self.repository.add_step(
@@ -384,6 +460,7 @@ class RuntimeRecorder(AgentRunRecorder):
         self.event(
             "agent_skipped", f"{agent_name} 건너뜀", {"agent_name": agent_name, "reason": reason}
         )
+        self._flush(checkpoint=True)
 
     def fail_step(self, step_id: str, reason: str) -> None:
         step = self.repository.update_step(
@@ -398,6 +475,7 @@ class RuntimeRecorder(AgentRunRecorder):
             f"{step.agent_name} 실패",
             {"agent_name": step.agent_name, "reason": reason},
         )
+        self._flush(checkpoint=True)
 
     def event(self, event_type: str, message: str, payload: dict | None = None) -> None:
         self.repository.add_event(

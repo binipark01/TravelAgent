@@ -40,9 +40,10 @@ def test_agent_runtime_persists_evidence_events_and_refs(
             )
         },
     )
-
     assert response.status_code == 200
-    data = response.json()
+
+    # POST는 즉시 반환(running)하고 실행은 백그라운드에서 끝난다 → GET으로 최종 상태 확인.
+    data = client.get(f"/agent/runs/{created['run_id']}").json()
     assert data["run"]["status"] == "completed"
     assert data["state"]["evidence_refs"]
     event_types = {event["type"] for event in data["events"]}
