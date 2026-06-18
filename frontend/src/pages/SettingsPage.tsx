@@ -6,7 +6,12 @@ import { LoadingState } from '../components/LoadingState'
 import type { RuntimeSettings } from '../types/settings'
 import { errorMessage } from '../utils/errors'
 
-const EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
+const EFFORTS = [
+  { value: 'minimal', label: 'minimal · 가장 빠름' },
+  { value: 'low', label: 'low · 빠름 (추천)' },
+  { value: 'medium', label: 'medium · 균형' },
+  { value: 'high', label: 'high · 가장 정확' },
+] as const
 
 const rowStyle = {
   display: 'flex',
@@ -87,8 +92,8 @@ function SettingsForm({ initial }: { initial: RuntimeSettings }) {
             onChange={(event) => setForm({ ...form, codex_reasoning_effort: event.target.value })}
           >
             {EFFORTS.map((effort) => (
-              <option key={effort} value={effort}>
-                {effort}
+              <option key={effort.value} value={effort.value}>
+                {effort.label}
               </option>
             ))}
           </select>

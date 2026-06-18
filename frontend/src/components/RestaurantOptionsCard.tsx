@@ -42,6 +42,11 @@ export function RestaurantOptionsCard({ options, eyebrow = '맛집', title = '�
                     {option.rating != null && (
                       <span className="poi-rating">★ {option.rating.toFixed(1)}</span>
                     )}
+                    {option.review_count ? (
+                      <span className="poi-reviews">
+                        리뷰 {option.review_count.toLocaleString('ko-KR')}
+                      </span>
+                    ) : null}
                     {url && (
                       <a href={url} target="_blank" rel="noopener noreferrer">
                         지도 ↗

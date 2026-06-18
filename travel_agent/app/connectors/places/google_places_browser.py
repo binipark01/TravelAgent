@@ -151,21 +151,95 @@ def extract_live_pois(
         )
     except GooglePlacesExtractionError:
         return []
-    options = [place_to_poi_option(place, destination, currency, kind=kind) for place in places]
-    # 평점 높은 순으로 정렬해 좋은 곳부터 보여준다.
-    options.sort(key=lambda option: option.rating or 0.0, reverse=True)
-    return options[:limit]
+    # 식당은 평점만 보면 스시집만 몰린다 → 리뷰수 가중 점수 + 음식 종류 다양성으로 고른다.
+    if kind == "restaurant":
+        places = _curate_diverse_restaurants(places, limit)
+    else:
+        places = _rank_by_blended(places)[:limit]
+    return [place_to_poi_option(place, destination, currency, kind=kind) for place in places]
+
+
+def _review_count(place: dict[str, Any]) -> int:
+    try:
+        return int(place.get("reviews") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _blended_score(place: dict[str, Any], mean: float) -> float:
+    """평점을 리뷰 수로 보정한 점수. 리뷰 적은 4.9 < 리뷰 많은 4.6 (베이지안 평균)."""
+    try:
+        rating = float(place.get("rating") or mean)
+    except (TypeError, ValueError):
+        rating = mean
+    n = _review_count(place)
+    confidence = 20.0
+    return (rating * n + confidence * mean) / (n + confidence)
+
+
+def _rank_by_blended(places: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rated = [p for p in places if p.get("rating")]
+    mean = sum(float(p["rating"]) for p in rated) / len(rated) if rated else 4.3
+    return sorted(places, key=lambda place: _blended_score(place, mean), reverse=True)
+
+
+# 음식 종류 버킷 — 같은 종류는 최대 2곳까지만 넣어 다양성을 확보한다.
+_CUISINE_BUCKETS: dict[str, tuple[str, ...]] = {
+    "스시·해산물": (
+        "스시", "초밥", "sushi", "회", "사시미", "해산물", "seafood", "오마카세", "kaiten",
+    ),
+    "라멘·면": ("라멘", "ramen", "소바", "우동", "면", "noodle", "쯔케멘"),
+    "이자카야·술집": ("이자카야", "izakaya", "선술집", "술집", "bar", "펍", "pub"),
+    "고기·구이": (
+        "야키니쿠", "yakiniku", "bbq", "구이", "스테이크", "steak",
+        "스키야키", "샤브", "곱창", "징기스칸",
+    ),
+    "튀김·돈카츠": ("돈카츠", "tonkatsu", "튀김", "텐푸라", "tempura", "카츠"),
+    "카페·디저트": ("카페", "cafe", "디저트", "dessert", "베이커리", "bakery", "빵", "커피"),
+    "양식": ("이탈리", "파스타", "피자", "pizza", "프렌치", "french", "양식", "버거", "비스트로"),
+    "중식": ("중식", "중국", "chinese", "딤섬", "마라", "mala"),
+    "한식": ("한식", "korean", "고깃집"),
+    "일식 기타": ("오코노미야키", "타코야키", "카레", "규동", "텐동", "가정식", "japanese"),
+}
+
+
+def _cuisine_bucket(category: str | None) -> str:
+    lowered = (category or "").lower()
+    for bucket, keywords in _CUISINE_BUCKETS.items():
+        if any(keyword.lower() in lowered for keyword in keywords):
+            return bucket
+    return category or "기타"
+
+
+def _curate_diverse_restaurants(
+    places: list[dict[str, Any]], limit: int, *, per_bucket_cap: int = 2
+) -> list[dict[str, Any]]:
+    ranked = _rank_by_blended(places)
+    counts: dict[str, int] = {}
+    picked: list[dict[str, Any]] = []
+    leftover: list[dict[str, Any]] = []
+    for place in ranked:
+        bucket = _cuisine_bucket(place.get("category"))
+        if counts.get(bucket, 0) < per_bucket_cap:
+            counts[bucket] = counts.get(bucket, 0) + 1
+            picked.append(place)
+        else:
+            leftover.append(place)
+    result = picked[:limit]
+    if len(result) < limit:
+        result.extend(leftover[: limit - len(result)])
+    return result[:limit]
 
 
 def place_to_poi_option(
     place: dict[str, Any], destination: str, currency: str, *, kind: str = "restaurant"
 ) -> POIOption:
     rating = place.get("rating")
+    review_count = _review_count(place) or None
     category = place.get("category") or _KIND_DEFAULT_TYPE.get(kind, "맛집")
     notes = ["구글 지도 실시간 추출 · 방문 전 영업시간·예약 확인"]
     if rating:
-        reviews = place.get("reviews")
-        suffix = f" ({int(reviews):,} 리뷰)" if reviews else ""
+        suffix = f" ({review_count:,} 리뷰)" if review_count else ""
         notes.insert(0, f"구글맵 평점 {rating}/5{suffix}")
     return POIOption(
         poi_id=new_id("poi"),
@@ -175,6 +249,7 @@ def place_to_poi_option(
         area=category,
         estimated_cost=Money(amount=0, currency=currency),
         rating=float(rating) if rating else None,
+        review_count=review_count,
         opening_hours=None,
         recommended_duration_minutes=90,
         booking_required=False,

@@ -67,6 +67,7 @@ export interface POIOption {
   area: string
   estimated_cost: Money
   rating?: number | null
+  review_count?: number | null
   opening_hours?: string | null
   recommended_duration_minutes: number
   booking_required: boolean

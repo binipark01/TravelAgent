@@ -87,6 +87,7 @@ def build_answer_client(settings) -> DirectLLMAnswerClient | CodexOAuthAnswerCli
         model=settings.codex_oauth_model,
         timeout_seconds=settings.codex_oauth_timeout_seconds,
         enable_web_search=settings.codex_oauth_enable_web_search,
+        reasoning_effort=settings.codex_reasoning_effort,
     )
 
 
@@ -169,11 +170,13 @@ class CodexOAuthAnswerClient:
         model: str | None = "gpt-5.5",
         timeout_seconds: int = 240,
         enable_web_search: bool = True,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.command = command
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.enable_web_search = enable_web_search
+        self.reasoning_effort = reasoning_effort
 
     def answer(
         self,
@@ -228,6 +231,8 @@ class CodexOAuthAnswerClient:
         ]
         if self.model:
             args.extend(["-m", self.model])
+        if self.reasoning_effort:
+            args.extend(["-c", f"model_reasoning_effort={self.reasoning_effort}"])
         if self.enable_web_search:
             args.append("--search")
         args.extend(

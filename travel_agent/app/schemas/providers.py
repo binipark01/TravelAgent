@@ -81,6 +81,7 @@ class POIOption(StrictBaseModel):
     area: str
     estimated_cost: Money
     rating: float | None = None
+    review_count: int | None = None
     opening_hours: str | None = None
     recommended_duration_minutes: int = 90
     booking_required: bool = False
