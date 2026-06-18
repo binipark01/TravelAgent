@@ -23,7 +23,18 @@ export function MapCard({
 
   let src: string | null = null
   let kind = ''
-  if (GMAPS_KEY) {
+  if (GMAPS_KEY && focus?.route) {
+    // 동선(경로) 모드: 방문지를 출발→경유→도착 순서로 이어 지도에 그린다.
+    const { origin, destination, waypoints, mode } = focus.route
+    const wp = waypoints.length
+      ? `&waypoints=${waypoints.map(encodeURIComponent).join('|')}`
+      : ''
+    src =
+      `https://www.google.com/maps/embed/v1/directions?key=${GMAPS_KEY}` +
+      `&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}` +
+      `${wp}&mode=${mode}`
+    kind = 'Google 지도 · 동선'
+  } else if (GMAPS_KEY) {
     const q = focus ? (focusCoords ? `${focus.lat},${focus.lng}` : focus.query) : hub
     if (q) {
       const zoom = focus ? 16 : 12

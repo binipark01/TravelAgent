@@ -5,6 +5,7 @@ import {
   type MapFocus,
   type MapFocusValue,
   type MapPlacePick,
+  type MapRoutePick,
 } from './MapFocusContext'
 import { AccommodationOptionsCard } from './AccommodationOptionsCard'
 import { BudgetBreakdownCard } from './BudgetBreakdownCard'
@@ -55,16 +56,48 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   if (!hasAny) return null
 
   const hub = tickets?.hub || plan.selected_destination || ''
-  const selectPlace = (place: MapPlacePick) => {
-    const area = place.area || hub
-    const query = [place.label, area].filter(Boolean).join(', ')
-    setFocus({ label: place.label, query, lat: place.lat ?? null, lng: place.lng ?? null })
-    // 지도를 위로 스크롤해 바뀐 위치를 바로 보이게 한다.
+  // 지도를 위로 스크롤해 바뀐 위치를 바로 보이게 한다.
+  const scrollToMap = () =>
     requestAnimationFrame(() =>
-      document.getElementById('trip-map-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      document
+        .getElementById('trip-map-card')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     )
+  // 한 지점의 지오코딩 쿼리(좌표 있으면 좌표, 없으면 '이름, 지역').
+  const placeQuery = (place: MapPlacePick) =>
+    place.lat != null && place.lng != null
+      ? `${place.lat},${place.lng}`
+      : [place.label, place.area || hub].filter(Boolean).join(', ')
+
+  const selectPlace = (place: MapPlacePick) => {
+    setFocus({
+      label: place.label,
+      query: placeQuery(place),
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      route: null,
+    })
+    scrollToMap()
   }
-  const focusValue: MapFocusValue = { selectPlace, activeLabel: focus?.label ?? null }
+  const selectRoute = (route: MapRoutePick) => {
+    const stops = route.stops.filter((stop) => stop.label)
+    if (stops.length < 2) {
+      if (stops[0]) selectPlace(stops[0])
+      return
+    }
+    const queries = stops.map(placeQuery)
+    setFocus({
+      label: route.label,
+      route: {
+        origin: queries[0],
+        destination: queries[queries.length - 1],
+        waypoints: queries.slice(1, -1).slice(0, 8),
+        mode: 'transit',
+      },
+    })
+    scrollToMap()
+  }
+  const focusValue: MapFocusValue = { selectPlace, selectRoute, activeLabel: focus?.label ?? null }
 
   return (
     <MapFocusContext.Provider value={focusValue}>

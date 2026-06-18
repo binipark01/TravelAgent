@@ -11,6 +11,25 @@ import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
 export function DayPlanCard({ day }: { day: DayPlan }) {
   const focus = useMapFocus()
+  // 그 날 방문지(관광+식사)를 시간순으로 묶어 동선(경로)으로 쓴다.
+  const stops = [
+    ...day.items.map((item) => ({
+      t: item.start_time,
+      place: {
+        label: cleanDisplayText(item.title),
+        area: item.location.area ?? item.location.name,
+        lat: item.location.latitude,
+        lng: item.location.longitude,
+      },
+    })),
+    ...day.meals.map((meal) => ({
+      t: meal.start_time,
+      place: { label: cleanDisplayText(meal.title), area: cleanDisplayText(meal.area) },
+    })),
+  ]
+    .sort((a, b) => (a.t || '').localeCompare(b.t || ''))
+    .map((entry) => entry.place)
+
   return (
     <article className="day-card">
       <header className="day-card-header">
@@ -20,7 +39,18 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
             {formatDate(day.date)} {day.area ? `· ${day.area}` : ''}
           </p>
         </div>
-        {day.weather && <span className="day-weather">{cleanDisplayText(day.weather)}</span>}
+        <div className="day-card-header__right">
+          {focus && stops.length >= 2 && (
+            <button
+              type="button"
+              className="day-route-btn"
+              onClick={() => focus.selectRoute({ label: `${day.day}일차 동선`, stops })}
+            >
+              🗺️ 동선 보기
+            </button>
+          )}
+          {day.weather && <span className="day-weather">{cleanDisplayText(day.weather)}</span>}
+        </div>
       </header>
       <div className="timeline">
         {day.items.map((item) => (

@@ -1750,6 +1750,29 @@ legend {
   margin: 0;
 }
 
+.day-card-header__right {
+  align-items: center;
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+/* 그 날 동선을 지도에 그리는 버튼 */
+.day-route-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  color: var(--primary, #0f766e);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.day-route-btn:hover {
+  background: var(--primary-soft, rgba(15, 118, 110, 0.08));
+}
+
 .timeline {
   display: grid;
   gap: 10px;

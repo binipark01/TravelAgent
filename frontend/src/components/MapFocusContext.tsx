@@ -8,16 +8,24 @@ export interface MapPlacePick {
   lng?: number | null
 }
 
-/** MapCard가 실제로 띄우는 포커스(지오코딩 쿼리 + 선택적 좌표). */
+/** 하루 일정의 방문지들을 순서대로 묶은 동선(경로) 선택. */
+export interface MapRoutePick {
+  label: string
+  stops: MapPlacePick[]
+}
+
+/** MapCard가 실제로 띄우는 포커스: 단일 장소(query/좌표) 또는 동선(route). */
 export interface MapFocus {
   label: string
-  query: string
+  query?: string
   lat?: number | null
   lng?: number | null
+  route?: { origin: string; destination: string; waypoints: string[]; mode: string } | null
 }
 
 export interface MapFocusValue {
   selectPlace: (place: MapPlacePick) => void
+  selectRoute: (route: MapRoutePick) => void
   activeLabel: string | null
 }
 
