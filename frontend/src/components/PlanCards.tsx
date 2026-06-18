@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import type { TripPlanState } from '../types/trip'
+import { cleanDisplayText } from '../utils/format'
+import type { PoiInfoMap } from './DayPlanCard'
 import {
   MapFocusContext,
   type MapFocus,
@@ -39,6 +41,15 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
   const safety = plan.safety_info ?? null
   const nearby = plan.nearby_guide ?? null
   const tickets = plan.transport_tickets ?? null
+
+  // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
+  const poiInfo: PoiInfoMap = {}
+  for (const option of [...pois, ...activities]) {
+    poiInfo[cleanDisplayText(option.title)] = {
+      rating: option.rating ?? null,
+      minutes: option.recommended_duration_minutes || null,
+    }
+  }
 
   const hasAny =
     flights.length > 0 ||
@@ -110,7 +121,7 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
             onReset={() => setFocus(null)}
           />
         )}
-      {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
+      {hasItinerary && <ItineraryTimeline itinerary={itinerary} poiInfo={poiInfo} />}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
       {flights.length >= 2 && hotels.length >= 2 && (
         <PlanComparisonCard flights={flights} hotels={hotels} />

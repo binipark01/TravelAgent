@@ -9,7 +9,21 @@ import {
 } from '../utils/format'
 import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
-export function DayPlanCard({ day }: { day: DayPlan }) {
+export interface PoiInfo {
+  rating: number | null
+  minutes: number | null
+}
+export type PoiInfoMap = Record<string, PoiInfo>
+
+function durationLabel(minutes: number): string {
+  if (minutes >= 60) {
+    const hours = minutes / 60
+    return `추천 ~${Number.isInteger(hours) ? hours : hours.toFixed(1)}시간`
+  }
+  return `추천 ~${minutes}분`
+}
+
+export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: PoiInfoMap }) {
   const focus = useMapFocus()
   // 그 날 방문지(관광+식사)를 시간순으로 묶어 동선(경로)으로 쓴다.
   const stops = [
@@ -54,7 +68,11 @@ export function DayPlanCard({ day }: { day: DayPlan }) {
       </header>
       <div className="timeline">
         {day.items.map((item) => (
-          <ItineraryItemRow item={item} key={item.item_id} />
+          <ItineraryItemRow
+            item={item}
+            info={poiInfo[cleanDisplayText(item.title)]}
+            key={item.item_id}
+          />
         ))}
         {day.meals.map((meal) => {
           const trig = placeTriggerProps(focus, {
@@ -126,7 +144,7 @@ function mealTypeLabel(mealType: string): string {
   return '식사'
 }
 
-export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
+export function ItineraryItemRow({ item, info }: { item: ItineraryItem; info?: PoiInfo }) {
   const focus = useMapFocus()
   const trig = placeTriggerProps(focus, {
     label: cleanDisplayText(item.title),
@@ -134,6 +152,8 @@ export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
     lat: item.location.latitude,
     lng: item.location.longitude,
   })
+  const cost = item.estimated_cost.amount > 0 ? formatMoney(item.estimated_cost) : null
+  const hasMeta = info?.rating != null || (info?.minutes ?? 0) > 0 || cost != null
   return (
     <div className={`timeline-row ${trig.className}`.trim()} {...trig.interactive}>
       <time>
@@ -144,10 +164,18 @@ export function ItineraryItemRow({ item }: { item: ItineraryItem }) {
         <p>
           {cleanDisplayText(item.location.area ?? item.location.name)} ·{' '}
           {activityTypeLabel(item.type)}
-          {item.estimated_cost.amount > 0 ? ` · ${formatMoney(item.estimated_cost)}` : ''}
         </p>
         {item.booking_required && <span className="small-badge">예약 확인 필요</span>}
       </div>
+      {hasMeta && (
+        <div className="timeline-row__meta">
+          {info?.rating != null && <span className="timeline-rating">★ {info.rating.toFixed(1)}</span>}
+          {(info?.minutes ?? 0) > 0 && (
+            <span className="timeline-sub">{durationLabel(info?.minutes as number)}</span>
+          )}
+          {cost != null && <span className="timeline-sub">{cost}</span>}
+        </div>
+      )}
     </div>
   )
 }

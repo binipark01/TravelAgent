@@ -1,9 +1,15 @@
 import type { Itinerary } from '../types/itinerary'
 import { itinerarySummaryLabel } from '../utils/format'
-import { DayPlanCard } from './DayPlanCard'
+import { DayPlanCard, type PoiInfoMap } from './DayPlanCard'
 import { EmptyState } from './EmptyState'
 
-export function ItineraryTimeline({ itinerary }: { itinerary?: Itinerary | null }) {
+export function ItineraryTimeline({
+  itinerary,
+  poiInfo,
+}: {
+  itinerary?: Itinerary | null
+  poiInfo?: PoiInfoMap
+}) {
   return (
     <section className="card wide-card">
       <div className="section-heading">
@@ -19,7 +25,11 @@ export function ItineraryTimeline({ itinerary }: { itinerary?: Itinerary | null 
           <p className="section-summary">{itinerarySummaryLabel(itinerary.summary)}</p>
           <div className="day-list">
             {itinerary.days.map((day) => (
-              <DayPlanCard day={day} key={`${day.day}-${day.date ?? 'no-date'}`} />
+              <DayPlanCard
+                day={day}
+                poiInfo={poiInfo}
+                key={`${day.day}-${day.date ?? 'no-date'}`}
+              />
             ))}
           </div>
         </>
