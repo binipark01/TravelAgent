@@ -91,6 +91,34 @@ def test_continue_completes_even_with_sparse_request(
     assert data["state"]["optimized_itinerary"]["days"]
 
 
+def test_continue_with_new_city_switches_destination(client: TestClient) -> None:
+    created = client.post(
+        "/agent/runs",
+        json={
+            "message": "삿포로 3박4일 여행 계획 짜줘",
+            "locale": "ko-KR",
+            "currency": "KRW",
+            "timezone": "Asia/Seoul",
+        },
+    ).json()
+    first = _detail(client, created["run_id"])
+    assert "Sapporo" in (first["state"]["selected_destination"] or "")
+
+    # 같은 대화에서 '도쿄'를 요청하면 삿포로가 아니라 도쿄로 전환되어야 한다.
+    client.post(
+        f"/agent/runs/{created['run_id']}/messages",
+        json={"message": "도쿄 3박4일 계획 짜줘"},
+    )
+    second = _detail(client, created["run_id"])
+    state = second["state"]
+    assert "Tokyo" in (state["selected_destination"] or "")
+    assert "Sapporo" not in (state["selected_destination"] or "")
+    # 항공·숙소도 도쿄로 재검색되어 이전(삿포로) 결과가 남지 않는다.
+    assert state["transport_options"]
+    assert all("Tokyo" in opt["destination"] for opt in state["transport_options"])
+    assert state["optimized_itinerary"]["days"]
+
+
 def test_flight_search_request_returns_transport_options(client: TestClient) -> None:
     message = (
         "삿포로 여행갈건데 기간은 7월 초 중순 사이고 "

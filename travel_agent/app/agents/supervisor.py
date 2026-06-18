@@ -104,11 +104,60 @@ class TravelSupervisorAgent:
             history=history,
         )
         state.brief = result.brief
-        state.missing_fields = result.brief.missing_fields
-        state.assumptions = result.brief.assumptions
+        # 이어가기 발화가 '다른 도시'를 말하면 목적지를 전환하고 이전 결과를 비운다.
+        self._apply_destination_switch(state, intake_message)
+        state.missing_fields = state.brief.missing_fields
+        state.assumptions = state.brief.assumptions
         status = TripStatus.needs_user_input if state.missing_fields else TripStatus.intake
         set_status(state, status, "Intake completed with parsed travel request.")
         return state
+
+    def _apply_destination_switch(self, state: TripPlanState, message: str | None) -> None:
+        """이어가기 발화가 현재와 다른 도시를 명시하면 목적지를 전환한다.
+
+        규칙 기반 파서로 '이번 발화의 도시'를 뽑아 현재 선택과 비교하므로 LLM/폴백의
+        표기 차이(예: 'Tokyo' vs 'Tokyo, Japan')에 흔들리지 않는다. 전환 시 brief를
+        새 도시로 맞추고 selected_destination을 비워(목적지 에이전트가 재선택) 이전
+        도시에 묶인 결과를 모두 무효화한다 → 그래야 도쿄를 요청했는데 삿포로가 나오지 않는다.
+        """
+        brief = state.brief
+        current = state.selected_destination
+        if brief is None or not current:
+            return  # 첫 계획이면 일반 흐름(목적지 에이전트가 선택)
+        parse = self.intake_agent._parse_destinations
+        message_cities = [city for city in parse(message or "") if city != "Japan"]
+        if not message_cities:
+            return  # 이번 발화에 도시 명시 없음 → 기존 목적지 유지(편집/보완 턴)
+        new_city = message_cities[0]
+        if new_city in parse(current):
+            return  # 같은 도시(표기만 다름) → 전환 아님
+        nice = next((dest for dest in brief.destinations if new_city in parse(dest)), new_city)
+        brief.destinations = [nice]
+        brief.destination_hint = nice
+        brief.selected_destination = None
+        state.selected_destination = None
+        self._reset_destination_bound_results(state)
+
+    @staticmethod
+    def _reset_destination_bound_results(state: TripPlanState) -> None:
+        """목적지 변경 시 이전 도시에 묶인 후보·일정·횡단정보를 모두 비운다."""
+        state.transport_options = []
+        state.accommodation_options = []
+        state.poi_candidates = []
+        state.activity_options = []
+        state.local_transport_options = []
+        state.draft_itinerary = None
+        state.optimized_itinerary = None
+        state.budget = None
+        state.visa_result = None
+        state.local_transport = None
+        state.fx_info = None
+        state.safety_info = None
+        state.nearby_guide = None
+        state.transport_tickets = None
+        # 재검색 판정용 도메인 서명 캐시도 비워 확실히 다시 검색하게 한다.
+        for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
+            state.constraints.pop(key, None)
 
     def _pause_for_critical_missing(
         self, state: TripPlanState, recorder: AgentRunRecorder | None
