@@ -2415,7 +2415,8 @@ legend {
   overflow: hidden;
   border: 1px solid var(--border, rgba(148, 163, 184, 0.25));
 }
-.map-embed iframe {
+.map-embed iframe,
+.map-embed .map-js {
   display: block;
   width: 100%;
   height: clamp(440px, 60vh, 680px);

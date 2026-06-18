@@ -103,7 +103,12 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
     <MapFocusContext.Provider value={focusValue}>
       <div className="assistant-detail-cards plan-cards">
         {tickets != null && (
-          <MapCard guide={tickets} focus={focus} onReset={() => setFocus(null)} />
+          <MapCard
+            key={tickets.hub ?? 'map'}
+            guide={tickets}
+            focus={focus}
+            onReset={() => setFocus(null)}
+          />
         )}
       {hasItinerary && <ItineraryTimeline itinerary={itinerary} />}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
