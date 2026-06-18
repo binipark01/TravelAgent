@@ -2606,20 +2606,6 @@ legend {
   border: 1.5px solid rgba(148, 163, 184, 0.5);
 }
 
-/* 캔버스 상단에 얇게 깔리는 진행 배너(카드와 함께 보일 때) */
-.run-progress--banner {
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  gap: 14px;
-  overflow-x: auto;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-soft, rgba(148, 163, 184, 0.08));
-}
-.run-progress--banner .run-progress-step {
-  font-size: 13px;
-}
 
 .plan-compare-grid {
   display: grid;

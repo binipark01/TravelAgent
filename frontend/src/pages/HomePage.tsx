@@ -13,6 +13,7 @@ import type {
   AgentStep,
 } from '../types/agent'
 import type { LLMAnswerRequest } from '../types/llm'
+import type { TripPlanState } from '../types/trip'
 import {
   RUN_STATUS_LABELS,
   buildAgentRunAnswer,
@@ -47,6 +48,29 @@ interface ChatTurn {
 function nextTurnId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `turn_${Date.now()}_${Math.round(Math.random() * 1e6)}`
+}
+
+/** 캔버스에 렌더할 실제(non-mock) 카드가 하나라도 있는지. PlanCards의 표시 조건과 맞춘다. */
+function planHasContent(plan?: TripPlanState | null): boolean {
+  if (!plan) return false
+  const flights = (plan.transport_options ?? []).filter((o) => !o.metadata.is_mock)
+  const hotels = (plan.accommodation_options ?? []).filter((o) => !o.metadata.source_ref.is_mock)
+  const pois = (plan.poi_candidates ?? []).filter((o) => !o.metadata.source_ref.is_mock)
+  const activities = (plan.activity_options ?? []).filter((o) => !o.metadata.source_ref.is_mock)
+  return (
+    flights.length > 0 ||
+    hotels.length > 0 ||
+    pois.length > 0 ||
+    activities.length > 0 ||
+    (plan.optimized_itinerary?.days?.length ?? 0) > 0 ||
+    plan.budget != null ||
+    plan.fx_info != null ||
+    plan.transport_tickets != null ||
+    plan.local_transport != null ||
+    plan.nearby_guide != null ||
+    plan.visa_result != null ||
+    plan.safety_info != null
+  )
 }
 
 /** 이어가기 응답(detail)을 첫 응답(AgentRunResponse)과 같은 형태로 맞춘다. */
@@ -147,6 +171,8 @@ export function HomePage() {
   // 중앙 캔버스/좌측 패널은 가장 최근에 응답이 있는 턴을 기준으로 보여준다(폴링 중 실시간 갱신).
   const lastResolved = [...turns].reverse().find((turn) => turn.response)?.response
   const plan = lastResolved?.partial_plan
+  // 캔버스에 보여줄 실제 카드가 하나라도 생겼는지(없으면 세로 진행 표시 유지).
+  const hasContent = planHasContent(plan)
   const summary = lastResolved?.state_summary
   const firstWeather = plan?.optimized_itinerary?.days?.[0]?.weather ?? null
   const selectedAgents = lastResolved ? coreSelectedAgents(lastResolved) : []
@@ -199,13 +225,13 @@ export function HomePage() {
       </aside>
 
       <section className="trip-canvas" aria-label="여행 계획">
-        {plan ? (
+        {hasContent ? (
           <>
             <TripSummaryHeader summary={summary} weather={firstWeather} />
-            {isRunning && <LiveProgress response={lastResolved} variant="banner" />}
             <PlanCards plan={plan} />
           </>
         ) : isRunning ? (
+          // 카드가 아직 없으면 가운데 세로 진행 표시(가로 배너 대신).
           <div className="canvas-empty">
             <LiveProgress response={lastResolved} />
           </div>
@@ -321,13 +347,7 @@ function stageStatus(
 }
 
 /** 실제 에이전트 진행(steps/current_step/status)으로 단계별 상태를 표시한다. */
-function LiveProgress({
-  response,
-  variant,
-}: {
-  response?: AgentRunResponse
-  variant?: 'banner'
-}) {
+function LiveProgress({ response }: { response?: AgentRunResponse }) {
   const steps = response?.steps ?? []
   const current = response?.current_step
   const done = response?.status != null && isTerminalStatus(response.status)
@@ -341,7 +361,7 @@ function LiveProgress({
     if (firstTodo >= 0) statuses[firstTodo] = 'active'
   }
   return (
-    <div className={`run-progress${variant === 'banner' ? ' run-progress--banner' : ''}`}>
+    <div className="run-progress">
       {PROGRESS_STAGES.map((stage, idx) => (
         <div className={`run-progress-step ${statuses[idx]}`} key={stage.label}>
           <span className="run-progress-dot" aria-hidden="true" />
