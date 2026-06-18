@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { addAgentRunMessage, createAgentRun, getAgentRun } from '../api/agent'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
@@ -29,6 +29,9 @@ const EXAMPLE_PROMPTS = [
   '삿포로 스스키노 근처 4성급 호텔',
   '방콕 맛집이랑 관광지 알려줘',
 ] as const
+
+// 새로고침해도 현재 계획을 유지하려고 활성 run_id를 보관한다(로컬 사용 전제).
+const ACTIVE_RUN_KEY = 'travelAgent.activeRunId'
 
 const SCOPE_ITEMS = [
   { key: 'flight', label: '항공권' },
@@ -114,6 +117,8 @@ export function HomePage() {
     onSuccess: (data, vars) => {
       if (data.run_id) {
         setRunId(data.run_id)
+        // 새로고침 복원을 위해 활성 run을 저장.
+        localStorage.setItem(ACTIVE_RUN_KEY, data.run_id)
         // 아직 끝나지 않았으면 폴링을 시작한다.
         if (!isTerminalStatus(data.status)) setPollingRunId(data.run_id)
         else setActiveTurnId(null)
@@ -159,6 +164,37 @@ export function HomePage() {
     }
   }, [pollQuery.data, activeTurnId])
 
+  // 마운트 시: 저장된 활성 run이 있으면 서버에서 불러와 대화·캔버스를 복원한다.
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
+    const savedRunId = localStorage.getItem(ACTIVE_RUN_KEY)
+    if (!savedRunId) return
+    getAgentRun(savedRunId)
+      .then((detail) => {
+        const response = adaptDetail(detail)
+        const messages = detail.events
+          .filter((event) => event.type === 'user_message')
+          .map((event) => String((event.payload.message as string | undefined) ?? ''))
+          .filter(Boolean)
+        const msgs = messages.length ? messages : [detail.state.raw_user_message || '이전 요청']
+        const restored = msgs.map((message, idx) => ({
+          id: `restored_${idx}`,
+          message,
+          response: idx === msgs.length - 1 ? response : undefined,
+        }))
+        setTurns(restored)
+        setRunId(savedRunId)
+        // 복원했는데 아직 실행 중이면 폴링을 이어받는다.
+        if (!isTerminalStatus(detail.run.status)) {
+          setActiveTurnId(restored[restored.length - 1].id)
+          setPollingRunId(savedRunId)
+        }
+      })
+      .catch(() => localStorage.removeItem(ACTIVE_RUN_KEY))
+  }, [])
+
   function handleSubmit(payload: LLMAnswerRequest) {
     const turnId = nextTurnId()
     setActiveTurnId(turnId)
@@ -193,7 +229,14 @@ export function HomePage() {
             <span>여행 agent workspace</span>
           </div>
         </div>
-        <button className="new-chat-button" type="button" onClick={() => window.location.assign('/')}>
+        <button
+          className="new-chat-button"
+          type="button"
+          onClick={() => {
+            localStorage.removeItem(ACTIVE_RUN_KEY)
+            window.location.assign('/')
+          }}
+        >
           <Plus aria-hidden="true" />
           새 요청
         </button>
