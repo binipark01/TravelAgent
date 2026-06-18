@@ -2418,7 +2418,7 @@ legend {
 .map-embed iframe {
   display: block;
   width: 100%;
-  height: 420px;
+  height: clamp(440px, 60vh, 680px);
   border: 0;
 }
 
