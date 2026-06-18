@@ -7,6 +7,11 @@ const NOISE = /적립|할인|쿠폰|최대|표시\s*운임/
 const isDisclaimer = (note: string) => /추출|재확인/.test(note)
 
 const city = (value: string) => cleanDisplayText(value).split(',')[0].trim()
+// 칩 라벨 정리: "경유: 직항"→"직항", "가는 편 소요: …"→"소요시간: …"
+const formatChip = (note: string): string =>
+  note
+    .replace(/^경유:\s*/, '')
+    .replace(/^(?:가는 편\s*|오는 편\s*)?소요:\s*/, '소요시간: ')
 const md = (value?: string | null) => {
   const m = value?.match(/(\d{4})-(\d{2})-(\d{2})/)
   return m ? `${Number(m[2])}/${Number(m[3])}` : ''
@@ -32,7 +37,7 @@ export function TransportOptionsCard({ options }: { options: FlightOption[] }) {
           {options.map((option, index) => {
             const chips = option.notes
               .filter((note) => !NOISE.test(note) && !isDisclaimer(note))
-              .map(cleanDisplayText)
+              .map((note) => formatChip(cleanDisplayText(note)))
             const disclaimer = option.notes.find(isDisclaimer)
             return (
               <article className="flight-option" key={option.option_id}>
@@ -45,7 +50,7 @@ export function TransportOptionsCard({ options }: { options: FlightOption[] }) {
                 </p>
                 <p className="flight-legs">
                   <span>
-                    가는{' '}
+                    가는편{' '}
                     <b>
                       {md(option.departure_time)} {hm(option.departure_time)}→
                       {hm(option.arrival_time)}
@@ -53,7 +58,7 @@ export function TransportOptionsCard({ options }: { options: FlightOption[] }) {
                   </span>
                   {option.return_departure_time && (
                     <span>
-                      오는{' '}
+                      오는편{' '}
                       <b>
                         {md(option.return_departure_time)} {hm(option.return_departure_time)}→
                         {hm(option.return_arrival_time)}
