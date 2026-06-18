@@ -43,6 +43,53 @@ def _travel_answer_instruction(
     )
 
 
+# 계획/검색 요청이 아니라 '정보를 묻는 대화형 질문'인지 가르는 보수적 휴리스틱.
+_PLAN_BUILD_TOKENS = (
+    "계획", "일정 짜", "일정짜", "짜줘", "짜 줘", "예산", "예약해", "예약 해",
+)
+# 앱이 카드로 검색하는 도메인(이건 파이프라인이 카드로 답하게 둔다).
+_DOMAIN_SEARCH_TOKENS = (
+    "항공권", "비행기", "항공편", "숙소", "호텔", "맛집", "관광지", "렌트", "교통",
+)
+_QUESTION_TOKENS = (
+    "뭐", "무엇", "볼거", "볼 거", "볼만", "볼 만", "명소", "구경", "가볼", "가 볼",
+    "어때", "어떄", "어떨", "어디", "어떤", "어떻게", "왜", "궁금", "차이",
+    "있나", "있냐", "있어?", "있을까", "알려", "?",
+)
+
+
+def is_conversational_question(message: str | None) -> bool:
+    """계획/검색 요청이 아니라 정보를 묻는 대화형 질문이면 True(LLM이 바로 답하게).
+
+    계획 수립(계획·예산·짜줘)이나 도메인 검색(항공/숙소/맛집 등)이 섞이면 파이프라인이
+    카드로 답하도록 False. 순수 질문(볼거·명소·어때·뭐있냐 등)만 True.
+    """
+    text = (message or "").strip()
+    if not text:
+        return False
+    if any(token in text for token in _PLAN_BUILD_TOKENS):
+        return False
+    if any(token in text for token in _DOMAIN_SEARCH_TOKENS):
+        return False
+    return any(token in text for token in _QUESTION_TOKENS)
+
+
+def build_answer_client(settings) -> DirectLLMAnswerClient | CodexOAuthAnswerClient:  # noqa: F821
+    """설정에 맞는 직답 LLM 클라이언트를 만든다(OpenAI 키 있으면 API, 없으면 Codex OAuth)."""
+    if settings.openai_api_key:
+        return DirectLLMAnswerClient(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            enable_web_search=settings.codex_oauth_enable_web_search,
+        )
+    return CodexOAuthAnswerClient(
+        command=settings.codex_cli_command,
+        model=settings.codex_oauth_model,
+        timeout_seconds=settings.codex_oauth_timeout_seconds,
+        enable_web_search=settings.codex_oauth_enable_web_search,
+    )
+
+
 class DirectLLMAnswerClient:
     def __init__(self, api_key: str, model: str, enable_web_search: bool = True) -> None:
         self.api_key = api_key

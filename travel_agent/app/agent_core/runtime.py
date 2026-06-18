@@ -9,6 +9,7 @@ from travel_agent.app.agents.supervisor import TravelSupervisorAgent as LegacyPl
 from travel_agent.app.config import Settings, get_settings
 from travel_agent.app.db.repositories import AgentRunRepository, TripRepository
 from travel_agent.app.evidence.store import EvidenceStore
+from travel_agent.app.llm.direct_answer import build_answer_client, is_conversational_question
 from travel_agent.app.orchestration.agent_recorder import AgentRunRecorder
 from travel_agent.app.orchestration.run_context import build_run_context
 from travel_agent.app.orchestration.state_machine import add_audit_event
@@ -94,6 +95,13 @@ class AgentRuntime:
         run = self.run_repository.get_run(run_id)
         state = self.trip_repository.load_latest_state(run.trip_id)
         ctx = self._build_context(run_id, state)
+        # 정보를 묻는 대화형 질문이면 계획 파이프라인 대신 LLM이 바로 답한다.
+        intake_message = message or state.raw_user_message
+        if self.settings.enable_live_llm and is_conversational_question(intake_message):
+            self._answer_conversationally(ctx, state, intake_message)
+            self.session.commit()
+            persisted_run = self.run_repository.get_run(run_id)
+            return self._run_response(persisted_run, state)
         try:
             self._execute(ctx, state, message=message)
         except Exception:
@@ -103,6 +111,45 @@ class AgentRuntime:
         self.session.commit()
         persisted_run = self.run_repository.get_run(run_id)
         return self._run_response(persisted_run, state)
+
+    def _answer_conversationally(
+        self, ctx: RunContext, state: TripPlanState, message: str
+    ) -> None:
+        """계획 대신 LLM이 질문에 바로 답해 state.assistant_message에 채운다."""
+        state.assistant_message = None
+        recorder = RuntimeRecorder(
+            trip_id=state.trip_id,
+            run_id=ctx.run_id,
+            repository=self.run_repository,
+            state=state,
+            checkpoint_store=ctx.checkpoint_store,
+            session=self.session,
+        )
+        # 느린 LLM 호출 전에 '진행 중'을 커밋해 폴링이 답변 작성 중임을 보게 한다.
+        step_id = recorder.start_step("TravelAdvisorAgent", "여행 질문에 답변")
+        try:
+            client = build_answer_client(self.settings)
+            answer = client.answer(
+                message=message,
+                locale=state.locale,
+                currency=state.currency,
+                timezone=state.timezone,
+            )
+            state.assistant_message = answer.strip() or "답변을 생성하지 못했어요."
+            recorder.complete_step(step_id, "답변 생성 완료")
+        except Exception as exc:  # noqa: BLE001 - 실패해도 run은 메시지와 함께 완료시킨다
+            state.assistant_message = "지금 답변을 생성하지 못했어요. 잠시 후 다시 시도해 주세요."
+            recorder.fail_step(step_id, str(exc))
+        ctx.event_bus.emit(
+            AgentEventType.plan_ready, "답변이 준비되었습니다.", {"trip_id": state.trip_id}
+        )
+        self.run_repository.update_run(
+            ctx.run_id,
+            status=AgentRunStatus.completed,
+            current_step=None,
+            completed_at=utc_now(),
+        )
+        ctx.checkpoint_store.save(state)
 
     def start_run(
         self,
@@ -236,6 +283,8 @@ class AgentRuntime:
         *,
         message: str | None = None,
     ) -> None:
+        # 계획 파이프라인이면 이전 대화형 답변은 지운다(요약이 답변으로 덮이지 않게).
+        state.assistant_message = None
         recorder = RuntimeRecorder(
             trip_id=state.trip_id,
             run_id=ctx.run_id,

@@ -65,6 +65,8 @@ class TripPlanState(StrictBaseModel):
     source_refs: list[SourceRef] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     audit_log: list[AuditEvent] = Field(default_factory=list)
+    # 대화형 질문("오타루 볼거 뭐있냐")에 LLM이 바로 답한 텍스트(계획 요약 대신 표시).
+    assistant_message: str | None = None
     status: TripStatus = TripStatus.intake
 
 

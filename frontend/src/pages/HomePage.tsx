@@ -394,6 +394,19 @@ function LiveProgress({ response }: { response?: AgentRunResponse }) {
   const steps = response?.steps ?? []
   const current = response?.current_step
   const done = response?.status != null && isTerminalStatus(response.status)
+  // 대화형 질문(직답)이면 계획 단계 대신 간단한 표시만.
+  const isAdvisor =
+    current === 'TravelAdvisorAgent' || steps.some((s) => s.agent_name === 'TravelAdvisorAgent')
+  if (isAdvisor && !done) {
+    return (
+      <div className="run-progress">
+        <div className="run-progress-step active">
+          <span className="run-progress-dot" aria-hidden="true" />
+          <span>💬 답변을 작성하고 있어요</span>
+        </div>
+      </div>
+    )
+  }
   const statuses = PROGRESS_STAGES.map((stage) => {
     const s = stageStatus(steps, current, stage.agents)
     return done && s !== 'skipped' ? 'done' : s
@@ -419,10 +432,12 @@ function LiveProgress({ response }: { response?: AgentRunResponse }) {
 }
 
 function AssistantAnswer({ data }: { data: AgentRunResponse }) {
+  // 대화형 질문이면 LLM이 바로 답한 텍스트를, 아니면 계획 요약을 보여준다.
+  const answer = data.partial_plan?.assistant_message?.trim() || buildAgentRunAnswer(data)
   return (
     <section className="assistant-answer-message" aria-label="agent 답변">
       <div className="llm-answer-text" style={{ whiteSpace: 'pre-line' }}>
-        {buildAgentRunAnswer(data)}
+        {answer}
       </div>
     </section>
   )

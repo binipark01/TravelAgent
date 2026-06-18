@@ -110,6 +110,7 @@ export interface TripPlanState {
   booking_records: BookingRecord[]
   source_refs: SourceRef[]
   evidence_refs: string[]
+  assistant_message?: string | null
   status: TripStatus
 }
 
