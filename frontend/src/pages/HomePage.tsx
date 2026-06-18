@@ -178,17 +178,15 @@ export function HomePage() {
           .filter((event) => event.type === 'user_message')
           .map((event) => String((event.payload.message as string | undefined) ?? ''))
           .filter(Boolean)
-        const msgs = messages.length ? messages : [detail.state.raw_user_message || '이전 요청']
-        const restored = msgs.map((message, idx) => ({
-          id: `restored_${idx}`,
-          message,
-          response: idx === msgs.length - 1 ? response : undefined,
-        }))
-        setTurns(restored)
+        const lastMessage =
+          messages[messages.length - 1] || detail.state.raw_user_message || '이전 요청'
+        // 한 run에 여러 턴이 쌓여 답변을 턴별로 복원할 수 없으므로, 마지막 대화 1개만
+        // 깔끔히 복원한다(과거 메시지 무더기·엉뚱한 답변 매칭 방지). 계획은 캔버스로 복원.
+        const restored: ChatTurn = { id: 'restored', message: lastMessage, response }
+        setTurns([restored])
         setRunId(savedRunId)
-        // 복원했는데 아직 실행 중이면 폴링을 이어받는다.
         if (!isTerminalStatus(detail.run.status)) {
-          setActiveTurnId(restored[restored.length - 1].id)
+          setActiveTurnId('restored')
           setPollingRunId(savedRunId)
         }
       })
