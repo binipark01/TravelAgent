@@ -91,7 +91,7 @@ _BRIEF_JSON_KEYS = (
     "adults, children, travelers, budget_total, budget_per_person, currency, "
     "travel_style, pace, accommodation_preference, transport_preference, "
     "accessibility_needs, dietary_restrictions, passport_country, visa_status_known, "
-    "must_include, must_avoid"
+    "must_include, must_avoid, clarification"
 )
 
 
@@ -227,6 +227,9 @@ class CodexTripBriefClient:
             "사용자가 목적지/날짜/인원을 명시하지 않았으면 "
             "문맥상 가장 합리적인 값을 추정해서 채운다. "
             "단, 실제 가격/좌석/항공편 번호/비자 규칙은 지어내지 마라. 날짜는 ISO(YYYY-MM-DD).\n"
+            "사용자가 출발지·출발 날짜·인원·예산·관심사 등 핵심 정보를 명시하지 않았으면, "
+            "어떤 정보를 알려주면 계획이 더 정확해지는지 한국어 한 문장으로 친근하게 "
+            "'clarification'에 담아라(목적지 특성·시즌을 살짝 곁들여도 좋다). 다 명시했으면 null.\n"
             f"통화: {currency}\n"
             f"JSON 키: {_BRIEF_JSON_KEYS}\n\n"
             f"{context_block}"

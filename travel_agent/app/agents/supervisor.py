@@ -387,19 +387,26 @@ class TravelSupervisorAgent:
         brief = state.brief
         if brief is None:
             return
-        # 채우기 전에 '추정한 항목'을 기록한다(목적지는 단일/대화에서 따로 다룸).
-        suggestions: list[str] = []
-        if not brief.origin:
-            suggestions.append("출발지")
-        if not brief.start_date:
-            suggestions.append("출발 날짜")
-        if brief.travelers is None and not brief.traveler_count and not brief.adults:
-            suggestions.append("인원")
-        if brief.budget_total is None and brief.budget_per_person is None:
-            suggestions.append("예산")
-        if not brief.must_include:
-            suggestions.append("관심사(맛집·쇼핑·관광 등)")
-        state.input_suggestions = suggestions
+        # 보완 제안: LLM(intake)이 써준 문장을 우선 쓰고, 없으면 빈 필드로 규칙 기반 문장.
+        if brief.clarification and brief.clarification.strip():
+            state.clarification = brief.clarification.strip()
+        else:
+            missing: list[str] = []
+            if not brief.origin:
+                missing.append("출발지")
+            if not brief.start_date:
+                missing.append("출발 날짜")
+            if brief.travelers is None and not brief.traveler_count and not brief.adults:
+                missing.append("인원")
+            if brief.budget_total is None and brief.budget_per_person is None:
+                missing.append("예산")
+            if not brief.must_include:
+                missing.append("관심사(맛집·쇼핑·관광 등)")
+            state.clarification = (
+                f"{' · '.join(missing)}을(를) 알려주시면 더 정확히 맞춰드려요."
+                if missing
+                else None
+            )
         if not brief.destinations:
             brief.destinations = ["Japan"]
         if not brief.destination_hint:

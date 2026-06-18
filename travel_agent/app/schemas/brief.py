@@ -36,6 +36,8 @@ class TripBrief(StrictBaseModel):
     must_avoid: list[str] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
+    # 핵심 정보를 안 주면 LLM이 '무엇을 알려주면 더 정확해지는지' 한 문장으로 제안.
+    clarification: str | None = None
 
     @model_validator(mode="before")
     @classmethod
