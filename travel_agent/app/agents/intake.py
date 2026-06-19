@@ -387,7 +387,6 @@ class IntakeAgent:
         merged.currency = new.currency or old.currency
         merged.flexible_dates = old.flexible_dates or new.flexible_dates
         for field in [
-            "destinations",
             "accessibility_needs",
             "dietary_restrictions",
             "must_include",
@@ -396,6 +395,13 @@ class IntakeAgent:
         ]:
             combined = list(dict.fromkeys([*getattr(old, field), *getattr(new, field)]))
             setattr(merged, field, combined)
+        # 목적지: 새 발화가 도시를 명시하면 '전환'으로 보고 교체(union하면 옛 도시가 남아
+        # 시즈오카를 요청해도 삿포로가 선택돼 버린다). 도시 언급 없으면 이전 목적지 유지.
+        if new.destinations:
+            merged.destinations = list(dict.fromkeys(new.destinations))
+            merged.destination_hint = ", ".join(merged.destinations)
+        else:
+            merged.destinations = list(old.destinations)
         if merged.traveler_count is None:
             merged.traveler_count = merged.travelers
         if merged.adults is None:

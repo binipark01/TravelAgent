@@ -105,38 +105,44 @@ class TravelSupervisorAgent:
         )
         state.brief = result.brief
         # 이어가기 발화가 '다른 도시'를 말하면 목적지를 전환하고 이전 결과를 비운다.
-        self._apply_destination_switch(state, intake_message)
+        self._apply_destination_switch(state)
         state.missing_fields = state.brief.missing_fields
         state.assumptions = state.brief.assumptions
         status = TripStatus.needs_user_input if state.missing_fields else TripStatus.intake
         set_status(state, status, "Intake completed with parsed travel request.")
         return state
 
-    def _apply_destination_switch(self, state: TripPlanState, message: str | None) -> None:
-        """이어가기 발화가 현재와 다른 도시를 명시하면 목적지를 전환한다.
+    def _apply_destination_switch(self, state: TripPlanState) -> None:
+        """이어가기에서 다른 도시로 바뀌면 목적지를 전환한다(LLM이 뽑은 brief 기준).
 
-        규칙 기반 파서로 '이번 발화의 도시'를 뽑아 현재 선택과 비교하므로 LLM/폴백의
-        표기 차이(예: 'Tokyo' vs 'Tokyo, Japan')에 흔들리지 않는다. 전환 시 brief를
-        새 도시로 맞추고 selected_destination을 비워(목적지 에이전트가 재선택) 이전
-        도시에 묶인 결과를 모두 무효화한다 → 그래야 도쿄를 요청했는데 삿포로가 나오지 않는다.
+        intake가 최신 요청의 목적지로 brief.destinations를 교체하므로(시즈오카·나고야 등
+        하드코딩 목록에 없는 도시도 인식), 현재 선택이 거기 없으면 전환으로 본다. 전환 시
+        selected_destination을 비워(목적지 에이전트가 재선택) 이전 도시 결과를 모두
+        무효화한다 → 시즈오카를 요청했는데 삿포로가 남지 않게.
         """
         brief = state.brief
         current = state.selected_destination
         if brief is None or not current:
             return  # 첫 계획이면 일반 흐름(목적지 에이전트가 선택)
-        parse = self.intake_agent._parse_destinations
-        message_cities = [city for city in parse(message or "") if city != "Japan"]
-        if not message_cities:
-            return  # 이번 발화에 도시 명시 없음 → 기존 목적지 유지(편집/보완 턴)
-        new_city = message_cities[0]
-        if new_city in parse(current):
-            return  # 같은 도시(표기만 다름) → 전환 아님
-        nice = next((dest for dest in brief.destinations if new_city in parse(dest)), new_city)
-        brief.destinations = [nice]
-        brief.destination_hint = nice
+        # 나라(일본)만 있는 모호한 목적지는 전환 판단에서 제외(이미 도시로 해석됨).
+        specific = [
+            dest
+            for dest in brief.destinations
+            if dest.split(",")[0].strip().lower() != "japan"
+        ]
+        if not specific:
+            return
+        if any(self._same_city(current, dest) for dest in specific):
+            return  # 현재 목적지가 여전히 후보 → 유지(편집/보완 턴)
+        # 다른 도시로 전환: 선택을 비워 재선택 + 이전 도시 결과 무효화.
         brief.selected_destination = None
         state.selected_destination = None
         self._reset_destination_bound_results(state)
+
+    @staticmethod
+    def _same_city(a: str, b: str) -> bool:
+        """표기 차이를 무시하고 같은 도시인지(첫 구간 비교: 'Tokyo, Japan'→'tokyo')."""
+        return a.split(",")[0].strip().lower() == b.split(",")[0].strip().lower()
 
     @staticmethod
     def _reset_destination_bound_results(state: TripPlanState) -> None:
