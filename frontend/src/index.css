@@ -1791,7 +1791,7 @@ legend {
   border-left: 3px solid var(--primary);
   display: grid;
   gap: 12px;
-  grid-template-columns: 104px minmax(0, 1fr) auto;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
   padding-left: 12px;
 }
 
@@ -1822,6 +1822,7 @@ legend {
   color: var(--muted);
   font-size: 13px;
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .timeline-row p,

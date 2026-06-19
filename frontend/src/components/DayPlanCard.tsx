@@ -23,6 +23,13 @@ function durationLabel(minutes: number): string {
   return `추천 ~${minutes}분`
 }
 
+/** "10:00:00" → "10:00" (초 제거). */
+function hhmm(value?: string | null): string {
+  if (!value) return ''
+  const match = value.match(/(\d{1,2}):(\d{2})/)
+  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : value
+}
+
 export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: PoiInfoMap }) {
   const focus = useMapFocus()
   // 그 날 방문지(관광+식사)를 시간순으로 묶어 동선(경로)으로 쓴다.
@@ -67,64 +74,86 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
         </div>
       </header>
       <div className="timeline">
-        {day.items.map((item) => (
-          <ItineraryItemRow
-            item={item}
-            info={poiInfo[cleanDisplayText(item.title)]}
-            key={item.item_id}
-          />
-        ))}
-        {day.meals.map((meal) => {
-          const trig = placeTriggerProps(focus, {
-            label: cleanDisplayText(meal.title),
-            area: cleanDisplayText(meal.area),
-          })
-          return (
-            <div
-              className={`timeline-row muted ${trig.className}`.trim()}
-              key={meal.item_id}
-              {...trig.interactive}
-            >
-              <time>
-                {meal.start_time} - {meal.end_time}
-              </time>
-              <div>
-                <strong>{cleanDisplayText(meal.title)}</strong>
-                <p>
-                  {mealTypeLabel(meal.meal_type)}
-                  {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
-                </p>
-                {meal.notes[0] && <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>}
+        {[
+          ...day.items.map((item) => ({ t: item.start_time, kind: 'item' as const, item })),
+          ...day.meals.map((meal) => ({ t: meal.start_time, kind: 'meal' as const, meal })),
+          ...day.transfers.map((transfer) => ({
+            t: transfer.start_time,
+            kind: 'transfer' as const,
+            transfer,
+          })),
+          ...day.free_time.map((block) => ({ t: block.start_time, kind: 'free' as const, block })),
+        ]
+          .sort((a, b) => (a.t || '').localeCompare(b.t || ''))
+          .map((entry) => {
+            if (entry.kind === 'item') {
+              return (
+                <ItineraryItemRow
+                  item={entry.item}
+                  info={poiInfo[cleanDisplayText(entry.item.title)]}
+                  key={entry.item.item_id}
+                />
+              )
+            }
+            if (entry.kind === 'meal') {
+              const meal = entry.meal
+              const trig = placeTriggerProps(focus, {
+                label: cleanDisplayText(meal.title),
+                area: cleanDisplayText(meal.area),
+              })
+              return (
+                <div
+                  className={`timeline-row muted ${trig.className}`.trim()}
+                  key={meal.item_id}
+                  {...trig.interactive}
+                >
+                  <time>
+                    {hhmm(meal.start_time)} - {hhmm(meal.end_time)}
+                  </time>
+                  <div>
+                    <strong>{cleanDisplayText(meal.title)}</strong>
+                    <p>
+                      {mealTypeLabel(meal.meal_type)}
+                      {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
+                    </p>
+                    {meal.notes[0] && (
+                      <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+            if (entry.kind === 'transfer') {
+              const transfer = entry.transfer
+              return (
+                <div className="timeline-row transfer-row" key={transfer.item_id}>
+                  <time>
+                    {hhmm(transfer.start_time)} - {hhmm(transfer.end_time)}
+                  </time>
+                  <div>
+                    <strong>
+                      {cleanDisplayText(transfer.origin)} → {cleanDisplayText(transfer.destination)}
+                    </strong>
+                    <p>
+                      {transportModeLabel(transfer.mode)} · 이동 {transfer.travel_minutes}분
+                    </p>
+                  </div>
+                </div>
+              )
+            }
+            const block = entry.block
+            return (
+              <div className="timeline-row muted" key={block.item_id}>
+                <time>
+                  {hhmm(block.start_time)} - {hhmm(block.end_time)}
+                </time>
+                <div>
+                  <strong>{cleanDisplayText(block.title)}</strong>
+                  <p>휴식 또는 일정 조정 시간</p>
+                </div>
               </div>
-            </div>
-          )
-        })}
-        {day.transfers.map((transfer) => (
-          <div className="timeline-row transfer-row" key={transfer.item_id}>
-            <time>
-              {transfer.start_time} - {transfer.end_time}
-            </time>
-            <div>
-              <strong>
-                {cleanDisplayText(transfer.origin)} → {cleanDisplayText(transfer.destination)}
-              </strong>
-              <p>
-                {transportModeLabel(transfer.mode)} · 이동 {transfer.travel_minutes}분
-              </p>
-            </div>
-          </div>
-        ))}
-        {day.free_time.map((block) => (
-          <div className="timeline-row muted" key={block.item_id}>
-            <time>
-              {block.start_time} - {block.end_time}
-            </time>
-            <div>
-              <strong>{cleanDisplayText(block.title)}</strong>
-              <p>휴식 또는 일정 조정 시간</p>
-            </div>
-          </div>
-        ))}
+            )
+          })}
       </div>
       {day.notes.length > 0 && (
         <ul className="text-list compact">
@@ -157,7 +186,7 @@ export function ItineraryItemRow({ item, info }: { item: ItineraryItem; info?: P
   return (
     <div className={`timeline-row ${trig.className}`.trim()} {...trig.interactive}>
       <time>
-        {item.start_time} - {item.end_time}
+        {hhmm(item.start_time)} - {hhmm(item.end_time)}
       </time>
       <div>
         <strong>{cleanDisplayText(item.title)}</strong>
