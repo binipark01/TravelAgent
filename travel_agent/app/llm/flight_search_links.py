@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from urllib.parse import quote_plus
 
+from travel_agent.app.llm import geo_resolver
 from travel_agent.app.schemas.brief import TripBrief
 
 
@@ -16,6 +17,8 @@ class FlightSearchLinks:
     naver_url: str
     skyscanner_url: str
     google_url: str
+    # 목적지에 국제선 직항이 적어 인근 허브로 검색할 때의 안내(예: 시즈오카→나고야).
+    note: str | None = None
 
     def summary(self) -> str:
         date_range = self.departure_date.isoformat()
@@ -116,7 +119,15 @@ def _normalize_place(name: str) -> str:
 
 
 def _codes_for(name: str) -> tuple[str, str] | None:
-    return AIRPORT_CODES.get(_normalize_place(name))
+    codes = AIRPORT_CODES.get(_normalize_place(name))
+    if codes:
+        return codes
+    # 카탈로그에 없는 도시(시즈오카 등)는 LLM이 IATA·스카이스캐너 코드를 해석한다.
+    # (라이브 LLM이 꺼져 있으면 resolve_place가 None → 기존처럼 None을 돌려준다.)
+    resolved = geo_resolver.resolve_place(name)
+    if resolved and resolved.iata:
+        return (resolved.iata, resolved.skyscanner or resolved.iata.lower())
+    return None
 
 
 def build_flight_search_links(brief: TripBrief) -> FlightSearchLinks | None:
@@ -127,6 +138,8 @@ def build_flight_search_links(brief: TripBrief) -> FlightSearchLinks | None:
     if not route:
         return None
     return_date = brief.end_date
+    # 목적지가 LLM으로 해석된 경우, 인근 허브 안내(직항 적음 등)를 함께 싣는다(캐시 적중).
+    resolved = geo_resolver.resolve_place(destination)
     return FlightSearchLinks(
         origin_label=brief.origin,
         destination_label=destination,
@@ -137,6 +150,7 @@ def build_flight_search_links(brief: TripBrief) -> FlightSearchLinks | None:
             route, brief.start_date, return_date, brief.travelers or 1
         ),
         google_url=_google_url(brief.origin, destination, brief.start_date, return_date),
+        note=resolved.hub_note if resolved else None,
     )
 
 

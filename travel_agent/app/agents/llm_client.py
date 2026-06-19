@@ -103,6 +103,122 @@ def codex_brief_available(command: str = "codex") -> bool:
     return any(shutil.which(candidate) for candidate in candidates)
 
 
+def resolve_codex_command(command: str = "codex") -> str:
+    """codex 실행 파일 경로를 해석한다(Windows에선 .cmd/.exe 우선)."""
+    command_path = Path(command)
+    if command_path.suffix or command_path.parent != Path("."):
+        return command
+    candidates = (
+        [f"{command}.cmd", f"{command}.exe", command]
+        if os.name == "nt"
+        else [command]
+    )
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return command
+
+
+def codex_subprocess_env() -> dict[str, str]:
+    """Codex 서브프로세스에 넘길 안전한 환경변수만 골라낸다."""
+    return {
+        key: value
+        for key in _SAFE_CODEX_ENV_KEYS
+        if (value := os.environ.get(key)) is not None
+    }
+
+
+def build_codex_exec_args(
+    *, command: str, workdir: str, model: str | None, reasoning_effort: str | None
+) -> list[str]:
+    """`codex exec`(read-only, ephemeral, JSON 출력) 인자 목록을 만든다."""
+    args = [resolve_codex_command(command), "-s", "read-only", "-a", "never", "-C", workdir]
+    if model:
+        args.extend(["-m", model])
+    if reasoning_effort:
+        args.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
+    args.extend(
+        [
+            "exec",
+            "-",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--skip-git-repo-check",
+            "--json",
+            "--color",
+            "never",
+        ]
+    )
+    return args
+
+
+def extract_codex_agent_message(stdout: str) -> str:
+    """`codex exec --json` 스트림에서 agent_message 텍스트만 이어 붙인다."""
+    messages: list[str] = []
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "item.completed":
+            continue
+        item = event.get("item")
+        if isinstance(item, dict) and item.get("type") == "agent_message":
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                messages.append(text.strip())
+    return "\n\n".join(messages).strip()
+
+
+def parse_codex_json_object(text: str) -> dict:
+    """LLM 출력(코드펜스 포함 가능)에서 첫 JSON 객체를 파싱한다."""
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    candidate = fenced.group(1) if fenced else text
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise RuntimeError("Codex 응답에서 JSON 객체를 찾지 못했습니다.")
+    return json.loads(candidate[start : end + 1])
+
+
+def run_codex_json(
+    prompt: str,
+    *,
+    command: str = "codex",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    timeout_seconds: int = 60,
+) -> dict | None:
+    """Codex CLI에 prompt를 보내 JSON 객체 하나를 받는다. 실패하면 None(best-effort)."""
+    with tempfile.TemporaryDirectory(prefix="travel-agent-codex-") as workdir:
+        args = build_codex_exec_args(
+            command=command, workdir=workdir, model=model, reasoning_effort=reasoning_effort
+        )
+        try:
+            result = subprocess.run(
+                args,
+                input=prompt,
+                env=codex_subprocess_env(),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+    text = extract_codex_agent_message(result.stdout)
+    if not text:
+        return None
+    try:
+        return parse_codex_json_object(text)
+    except (RuntimeError, json.JSONDecodeError):
+        return None
+
+
 class LLMClient(Protocol):
     def extract_trip_brief(
         self, message: str, currency: str, history: list[str] | None = None
@@ -267,69 +383,21 @@ class CodexTripBriefClient:
         return coerce_trip_brief(data, currency)
 
     def _build_command(self, workdir: str) -> list[str]:
-        args = [self._resolve_command(), "-s", "read-only", "-a", "never", "-C", workdir]
-        if self.model:
-            args.extend(["-m", self.model])
-        if self.reasoning_effort:
-            args.extend(["-c", f"model_reasoning_effort={self.reasoning_effort}"])
-        args.extend(
-            [
-                "exec",
-                "-",
-                "--ephemeral",
-                "--ignore-user-config",
-                "--ignore-rules",
-                "--skip-git-repo-check",
-                "--json",
-                "--color",
-                "never",
-            ]
+        return build_codex_exec_args(
+            command=self.command,
+            workdir=workdir,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
         )
-        return args
 
     def _subprocess_env(self) -> dict[str, str]:
-        return {
-            key: value
-            for key in _SAFE_CODEX_ENV_KEYS
-            if (value := os.environ.get(key)) is not None
-        }
+        return codex_subprocess_env()
 
     def _resolve_command(self) -> str:
-        command_path = Path(self.command)
-        if command_path.suffix or command_path.parent != Path("."):
-            return self.command
-        candidates = (
-            [f"{self.command}.cmd", f"{self.command}.exe", self.command]
-            if os.name == "nt"
-            else [self.command]
-        )
-        for candidate in candidates:
-            resolved = shutil.which(candidate)
-            if resolved:
-                return resolved
-        return self.command
+        return resolve_codex_command(self.command)
 
     def _extract_message(self, stdout: str) -> str:
-        messages: list[str] = []
-        for line in stdout.splitlines():
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if event.get("type") != "item.completed":
-                continue
-            item = event.get("item")
-            if isinstance(item, dict) and item.get("type") == "agent_message":
-                text = item.get("text")
-                if isinstance(text, str) and text.strip():
-                    messages.append(text.strip())
-        return "\n\n".join(messages).strip()
+        return extract_codex_agent_message(stdout)
 
     def _parse_json_object(self, text: str) -> dict:
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-        candidate = fenced.group(1) if fenced else text
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise RuntimeError("Codex 응답에서 JSON 객체를 찾지 못했습니다.")
-        return json.loads(candidate[start : end + 1])
+        return parse_codex_json_object(text)

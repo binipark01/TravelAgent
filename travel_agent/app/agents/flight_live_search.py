@@ -419,6 +419,8 @@ def flight_candidate_to_option(
     provider = candidate.provider or "naver_flight"
     source_label = _SOURCE_LABELS.get(provider, _SOURCE_LABELS["naver_flight"])
     notes = list(candidate.notes)
+    if links.note:
+        notes.append(f"ℹ️ {links.note}")
     notes.append(f"경유: {candidate.stops or '미확인'}")
     if candidate.outbound_duration:
         notes.append(f"가는 편 소요: {candidate.outbound_duration}")

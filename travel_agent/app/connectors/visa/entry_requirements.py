@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from travel_agent.app.llm import geo_resolver
 from travel_agent.app.schemas.common import SourceRef
 from travel_agent.app.schemas.providers import ProviderMetadata, VisaCheckResult
 from travel_agent.app.utils.ids import new_id
@@ -173,7 +174,12 @@ _KR_PASSPORT = {"대한민국", "한국", "korea", "south korea", "republic of k
 
 
 def resolve_country(destination: str) -> str | None:
-    """도시/국가/별칭 문자열을 데이터셋 국가 키로 정규화한다."""
+    """도시/국가/별칭 문자열을 데이터셋 국가 키로 정규화한다.
+
+    카탈로그(별칭표)에 없는 도시(시즈오카 등)는 LLM이 국가를 식별한다. 국가 단위 데이터
+    (무비자일수·통화·안전·교통패스)는 그 나라 어느 도시든 동일하게 적용되므로 안전하다.
+    LLM이 돌려준 국가명도 별칭표로 한 번 더 정규화해 '프랑스'→'유럽(셰겐)' 같은 키로 맞춘다.
+    """
     if not destination:
         return None
     text = destination.split(",")[0].strip().lower()
@@ -183,6 +189,10 @@ def resolve_country(destination: str) -> str | None:
     for alias, country in _CITY_TO_COUNTRY.items():
         if alias in text:
             return country
+    resolved = geo_resolver.resolve_place(destination)
+    if resolved and resolved.country_ko:
+        country_key = resolved.country_ko.strip()
+        return _CITY_TO_COUNTRY.get(country_key.lower(), country_key)
     return None
 
 
