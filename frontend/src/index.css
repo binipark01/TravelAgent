@@ -56,7 +56,10 @@ a {
 }
 
 .app-shell {
-  min-height: 100vh;
+  /* 전체 UI를 브라우저 줌 한 틱(~10%)만큼 키운다. 값만 바꾸면 더/덜 키울 수 있음. */
+  --app-zoom: 1.1;
+  zoom: var(--app-zoom);
+  min-height: calc(100vh / var(--app-zoom));
 }
 
 .site-header {
@@ -121,7 +124,7 @@ a {
   gap: 16px;
   grid-template-columns: 240px minmax(0, 1fr) 420px;
   align-items: start;
-  min-height: calc(100vh - 112px);
+  min-height: calc(100vh / var(--app-zoom, 1) - 112px);
 }
 
 .agent-session-panel,
@@ -141,7 +144,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: calc(100vh - 112px);
+  max-height: calc(100vh / var(--app-zoom, 1) - 112px);
   overflow: auto;
   padding: 16px;
   position: sticky;
@@ -261,8 +264,8 @@ a {
   box-shadow: var(--shadow);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: calc(100vh - 112px);
-  max-height: calc(100vh - 112px);
+  min-height: calc(100vh / var(--app-zoom, 1) - 112px);
+  max-height: calc(100vh / var(--app-zoom, 1) - 112px);
   overflow: hidden;
 }
 .chat-dock {
@@ -276,8 +279,8 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  min-height: calc(100vh - 112px);
-  max-height: calc(100vh - 112px);
+  min-height: calc(100vh / var(--app-zoom, 1) - 112px);
+  max-height: calc(100vh / var(--app-zoom, 1) - 112px);
   overflow: auto;
   padding: 18px;
   display: flex;
