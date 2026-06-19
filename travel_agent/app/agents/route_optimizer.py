@@ -63,9 +63,12 @@ class RouteAgent:
         )
         for day in itinerary.days:
             if day.day == 1:
-                day.notes.append("도착일 — 공항 이동·체크인 버퍼를 두세요.")
+                day.notes.append("도착일 — 공항→숙소 이동·체크인 시간 버퍼를 넉넉히 두세요.")
             if day.day == days_count and days_count > 1:
-                day.notes.append("출국일 — 공항 도착 2-3시간 전 버퍼가 필요합니다.")
+                day.notes.append(
+                    "출국일 — 비행기 출발 2~3시간 전까지 공항에 도착하세요"
+                    "(국제선 체크인·보안검색 여유)."
+                )
 
         self._attach_weather(itinerary, state, brief, days_count)
         state.draft_itinerary = itinerary
