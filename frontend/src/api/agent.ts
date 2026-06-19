@@ -7,6 +7,17 @@ import type {
   AgentRunResponse,
   AgentRunSummary,
 } from '../types/agent'
+import type { Itinerary } from '../types/itinerary'
+
+export function updateItinerary(
+  runId: string,
+  itinerary: Itinerary,
+): Promise<AgentRunDetailResponse> {
+  return apiRequest<AgentRunDetailResponse>(`/agent/runs/${runId}/itinerary`, {
+    method: 'POST',
+    body: itinerary,
+  })
+}
 
 export function createAgentRun(payload: AgentRunCreateRequest): Promise<AgentRunResponse> {
   return apiRequest<AgentRunResponse>('/agent/runs', { method: 'POST', body: payload })

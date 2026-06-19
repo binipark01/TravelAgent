@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { Itinerary } from '../types/itinerary'
 import type { TripPlanState } from '../types/trip'
 import { cleanDisplayText } from '../utils/format'
 import type { PoiInfoMap } from './DayPlanCard'
@@ -24,7 +25,13 @@ import { TransportOptionsCard } from './TransportOptionsCard'
 import { VisaCard } from './VisaCard'
 
 /** TripPlanState에서 실시간(non-mock) 결과 카드를 렌더한다. 채팅·저장 뷰 공용. */
-export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
+export function PlanCards({
+  plan,
+  onItineraryChange,
+}: {
+  plan?: TripPlanState | null
+  onItineraryChange?: (itinerary: Itinerary) => void
+}) {
   // 항목 클릭 시 지도가 그 장소로 이동하도록 포커스 상태를 둔다.
   const [focus, setFocus] = useState<MapFocus | null>(null)
   if (!plan) return null
@@ -121,7 +128,13 @@ export function PlanCards({ plan }: { plan?: TripPlanState | null }) {
             onReset={() => setFocus(null)}
           />
         )}
-      {hasItinerary && <ItineraryTimeline itinerary={itinerary} poiInfo={poiInfo} />}
+      {hasItinerary && (
+        <ItineraryTimeline
+          itinerary={itinerary}
+          poiInfo={poiInfo}
+          onChange={onItineraryChange}
+        />
+      )}
       {budget != null && <BudgetBreakdownCard budget={budget} />}
       {flights.length >= 2 && hotels.length >= 2 && (
         <PlanComparisonCard flights={flights} hotels={hotels} />

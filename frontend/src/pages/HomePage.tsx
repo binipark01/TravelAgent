@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { addAgentRunMessage, createAgentRun, getAgentRun } from '../api/agent'
+import { addAgentRunMessage, createAgentRun, getAgentRun, updateItinerary } from '../api/agent'
+import type { Itinerary } from '../types/itinerary'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
 import { PlanCards } from '../components/PlanCards'
@@ -200,6 +201,25 @@ export function HomePage() {
       })
   }, [])
 
+  // 사용자가 화면에서 직접 편집한 일정을 즉시 반영(낙관적) + 서버에 저장.
+  function handleItineraryChange(itinerary: Itinerary) {
+    if (!runId) return
+    setTurns((prev) => {
+      let lastIdx = -1
+      prev.forEach((turn, i) => {
+        if (turn.response) lastIdx = i
+      })
+      if (lastIdx < 0 || !prev[lastIdx].response?.partial_plan) return prev
+      const resp = prev[lastIdx].response as AgentRunResponse
+      const updated: AgentRunResponse = {
+        ...resp,
+        partial_plan: { ...resp.partial_plan!, optimized_itinerary: itinerary },
+      }
+      return prev.map((turn, i) => (i === lastIdx ? { ...turn, response: updated } : turn))
+    })
+    updateItinerary(runId, itinerary).catch((error) => console.error('일정 저장 실패', error))
+  }
+
   function handleSubmit(payload: LLMAnswerRequest) {
     const turnId = nextTurnId()
     setActiveTurnId(turnId)
@@ -276,7 +296,10 @@ export function HomePage() {
         {hasContent ? (
           <>
             <TripSummaryHeader summary={summary} weather={firstWeather} />
-            <PlanCards plan={plan} />
+            <PlanCards
+              plan={plan}
+              onItineraryChange={runId ? handleItineraryChange : undefined}
+            />
           </>
         ) : isRunning ? (
           // 카드가 아직 없으면 가운데 세로 진행 표시(가로 배너 대신).

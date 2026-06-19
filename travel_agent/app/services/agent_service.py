@@ -12,6 +12,7 @@ from travel_agent.app.schemas.agent import (
     AgentRunResponse,
     AgentRunSummary,
 )
+from travel_agent.app.schemas.itinerary import Itinerary
 
 
 class AgentService:
@@ -50,6 +51,9 @@ class AgentService:
 
     def get_run(self, run_id: str) -> AgentRunDetailResponse:
         return self.runtime.get_run(run_id)
+
+    def update_itinerary(self, run_id: str, itinerary: Itinerary) -> AgentRunDetailResponse:
+        return self.runtime.update_itinerary(run_id, itinerary)
 
     def list_runs(self, limit: int = 30) -> list[AgentRunSummary]:
         return self.runtime.list_runs(limit)

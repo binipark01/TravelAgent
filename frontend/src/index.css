@@ -1825,6 +1825,86 @@ legend {
   white-space: nowrap;
 }
 
+/* 일정 직접 편집(드래그·시간·삭제) */
+.itinerary-edit-btn {
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary, #0f766e);
+  cursor: pointer;
+}
+.itinerary-edit-btn:hover {
+  background: var(--primary-soft, rgba(15, 118, 110, 0.08));
+}
+.timeline--edit {
+  gap: 6px;
+}
+.edit-row {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 18px 84px minmax(0, 1fr) 22px;
+  padding: 6px 8px;
+}
+.drag-handle {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: grab;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  touch-action: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.edit-times {
+  display: grid;
+  gap: 3px;
+}
+.edit-times input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 4px;
+  width: 78px;
+}
+.edit-row__main {
+  min-width: 0;
+}
+.edit-row__main strong {
+  display: block;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edit-row__main p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 1px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edit-delete {
+  background: transparent;
+  border: 0;
+  color: var(--danger, #d4533c);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0;
+}
+
 .timeline-row p,
 .option-card p,
 .approval-card p,

@@ -27,6 +27,7 @@ from travel_agent.app.schemas.agent import (
     TripStateSummary,
 )
 from travel_agent.app.schemas.common import TripStatus
+from travel_agent.app.schemas.itinerary import Itinerary
 from travel_agent.app.schemas.trip import TripPlanState
 from travel_agent.app.sources.registry import SourceRegistry
 from travel_agent.app.sources.source_discovery import SourceDiscoveryTool
@@ -223,6 +224,16 @@ class AgentRuntime:
         run = self.run_repository.get_run(run_id)
         state = self.trip_repository.load_latest_state(run.trip_id)
         return self._detail_response(run, state)
+
+    def update_itinerary(self, run_id: str, itinerary: Itinerary) -> AgentRunDetailResponse:
+        """사용자가 화면에서 직접 편집한 일정을 저장한다(드래그·삭제·시간 수정)."""
+        run = self.run_repository.get_run(run_id)
+        state = self.trip_repository.load_latest_state(run.trip_id)
+        state.optimized_itinerary = itinerary
+        state.draft_itinerary = itinerary
+        self.trip_repository.save_snapshot(state)
+        self.session.commit()
+        return self.get_run(run_id)
 
     def get_events(self, run_id: str) -> list[AgentEvent]:
         self.run_repository.get_run(run_id)

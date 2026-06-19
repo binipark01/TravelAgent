@@ -178,3 +178,22 @@ def test_accommodation_search_request_returns_accommodation_options(
     assert "AccommodationAgent" in agent_names
     assert "RestaurantAgent" not in agent_names
     assert "RouteAgent" not in agent_names
+
+
+def test_update_itinerary_persists_user_edit(
+    client: TestClient, base_trip_payload: dict
+) -> None:
+    created = client.post("/agent/runs", json=base_trip_payload).json()
+    detail = _detail(client, created["run_id"])
+    itinerary = detail["state"]["optimized_itinerary"]
+    assert itinerary and itinerary["days"]
+    before = len(itinerary["days"][0]["items"])
+    assert before >= 1
+
+    # 1일차 첫 관광 항목을 삭제해 저장(화면 편집 시뮬레이션).
+    itinerary["days"][0]["items"] = itinerary["days"][0]["items"][1:]
+    response = client.post(f"/agent/runs/{created['run_id']}/itinerary", json=itinerary)
+    assert response.status_code == 200
+
+    after = client.get(f"/agent/runs/{created['run_id']}").json()
+    assert len(after["state"]["optimized_itinerary"]["days"][0]["items"]) == before - 1

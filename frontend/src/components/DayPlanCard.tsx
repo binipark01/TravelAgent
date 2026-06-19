@@ -1,5 +1,25 @@
-import type { ItineraryItem } from '../types/itinerary'
-import type { DayPlan } from '../types/itinerary'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type {
+  DayPlan,
+  FreeTimeBlock,
+  ItineraryItem,
+  MealSuggestion,
+  TransferSegment,
+} from '../types/itinerary'
 import {
   activityTypeLabel,
   cleanDisplayText,
@@ -23,33 +43,134 @@ function durationLabel(minutes: number): string {
   return `추천 ~${minutes}분`
 }
 
-/** "10:00:00" → "10:00" (초 제거). */
+/** "10:00:00" → "10:00" (초 제거 / <input type=time>용). */
 function hhmm(value?: string | null): string {
   if (!value) return ''
   const match = value.match(/(\d{1,2}):(\d{2})/)
   return match ? `${match[1].padStart(2, '0')}:${match[2]}` : value
 }
 
-export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: PoiInfoMap }) {
-  const focus = useMapFocus()
-  // 그 날 방문지(관광+식사)를 시간순으로 묶어 동선(경로)으로 쓴다.
-  const stops = [
-    ...day.items.map((item) => ({
-      t: item.start_time,
-      place: {
-        label: cleanDisplayText(item.title),
-        area: item.location.area ?? item.location.name,
-        lat: item.location.latitude,
-        lng: item.location.longitude,
-      },
-    })),
-    ...day.meals.map((meal) => ({
-      t: meal.start_time,
-      place: { label: cleanDisplayText(meal.title), area: cleanDisplayText(meal.area) },
-    })),
+function mealTypeLabel(mealType: string): string {
+  if (mealType === 'lunch') return '점심'
+  if (mealType === 'dinner') return '저녁'
+  if (mealType === 'breakfast') return '아침'
+  return '식사'
+}
+
+// ── 편집용 평면 엔트리 ────────────────────────────────────────────────
+type DayEntry =
+  | { id: string; kind: 'item'; start: string; end: string; data: ItineraryItem }
+  | { id: string; kind: 'meal'; start: string; end: string; data: MealSuggestion }
+  | { id: string; kind: 'transfer'; start: string; end: string; data: TransferSegment }
+  | { id: string; kind: 'free'; start: string; end: string; data: FreeTimeBlock }
+
+/** 그 날의 관광·식사·이동·자유시간을 한 목록으로 합쳐 시간순 정렬한다. */
+function dayEntries(day: DayPlan): DayEntry[] {
+  const list: DayEntry[] = [
+    ...day.items.map(
+      (data): DayEntry => ({ id: data.item_id, kind: 'item', start: data.start_time, end: data.end_time, data }),
+    ),
+    ...day.meals.map(
+      (data): DayEntry => ({ id: data.item_id, kind: 'meal', start: data.start_time, end: data.end_time, data }),
+    ),
+    ...day.transfers.map(
+      (data): DayEntry => ({
+        id: data.item_id,
+        kind: 'transfer',
+        start: data.start_time,
+        end: data.end_time,
+        data,
+      }),
+    ),
+    ...day.free_time.map(
+      (data): DayEntry => ({ id: data.item_id, kind: 'free', start: data.start_time, end: data.end_time, data }),
+    ),
   ]
-    .sort((a, b) => (a.t || '').localeCompare(b.t || ''))
-    .map((entry) => entry.place)
+  return list.sort((a, b) => (a.start || '').localeCompare(b.start || ''))
+}
+
+/** 편집된 엔트리들을 다시 DayPlan 구조(시간 반영)로 되돌린다. */
+function entriesToDay(day: DayPlan, entries: DayEntry[]): DayPlan {
+  const withTime = <T,>(entry: DayEntry) =>
+    ({ ...(entry.data as T), start_time: entry.start, end_time: entry.end }) as T
+  return {
+    ...day,
+    items: entries.filter((e) => e.kind === 'item').map((e) => withTime<ItineraryItem>(e)),
+    meals: entries.filter((e) => e.kind === 'meal').map((e) => withTime<MealSuggestion>(e)),
+    transfers: entries.filter((e) => e.kind === 'transfer').map((e) => withTime<TransferSegment>(e)),
+    free_time: entries.filter((e) => e.kind === 'free').map((e) => withTime<FreeTimeBlock>(e)),
+  }
+}
+
+/** 드래그로 순서를 바꾸면, 시간 슬롯(정렬된 시간들)을 새 순서대로 재배정한다. */
+function reassignTimes(entries: DayEntry[]): DayEntry[] {
+  const slots = entries
+    .map((e) => ({ start: e.start, end: e.end }))
+    .sort((a, b) => (a.start || '').localeCompare(b.start || ''))
+  return entries.map((entry, index) => ({ ...entry, start: slots[index].start, end: slots[index].end }))
+}
+
+function entryTitle(entry: DayEntry): string {
+  if (entry.kind === 'transfer') {
+    return `${cleanDisplayText(entry.data.origin)} → ${cleanDisplayText(entry.data.destination)}`
+  }
+  return cleanDisplayText(entry.data.title)
+}
+
+function entrySubtitle(entry: DayEntry): string {
+  if (entry.kind === 'item') {
+    return `${cleanDisplayText(entry.data.location.area ?? entry.data.location.name)} · ${activityTypeLabel(entry.data.type)}`
+  }
+  if (entry.kind === 'meal') {
+    return `${mealTypeLabel(entry.data.meal_type)}${entry.data.area ? ` · ${cleanDisplayText(entry.data.area)}` : ''}`
+  }
+  if (entry.kind === 'transfer') {
+    return `${transportModeLabel(entry.data.mode)} · 이동 ${entry.data.travel_minutes}분`
+  }
+  return '휴식 또는 일정 조정 시간'
+}
+
+export function DayPlanCard({
+  day,
+  poiInfo = {},
+  editing = false,
+  onDayChange,
+}: {
+  day: DayPlan
+  poiInfo?: PoiInfoMap
+  editing?: boolean
+  onDayChange?: (day: DayPlan) => void
+}) {
+  const focus = useMapFocus()
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const entries = dayEntries(day)
+
+  // 그 날 방문지(관광+식사)를 시간순으로 묶어 동선(경로)으로 쓴다.
+  const stops = entries
+    .filter((entry) => entry.kind === 'item' || entry.kind === 'meal')
+    .map((entry) =>
+      entry.kind === 'item'
+        ? {
+            label: cleanDisplayText(entry.data.title),
+            area: entry.data.location.area ?? entry.data.location.name,
+            lat: entry.data.location.latitude,
+            lng: entry.data.location.longitude,
+          }
+        : { label: cleanDisplayText(entry.data.title), area: cleanDisplayText(entry.data.area) },
+    )
+
+  const commit = (next: DayEntry[]) => onDayChange?.(entriesToDay(day, next))
+  const handleDelete = (id: string) => commit(entries.filter((entry) => entry.id !== id))
+  const handleTimeChange = (id: string, which: 'start' | 'end', value: string) =>
+    commit(entries.map((entry) => (entry.id === id ? { ...entry, [which]: value } : entry)))
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = entries.findIndex((entry) => entry.id === active.id)
+    const newIndex = entries.findIndex((entry) => entry.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    commit(reassignTimes(arrayMove(entries, oldIndex, newIndex)))
+  }
 
   return (
     <article className="day-card">
@@ -61,7 +182,7 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
           </p>
         </div>
         <div className="day-card-header__right">
-          {focus && stops.length >= 2 && (
+          {!editing && focus && stops.length >= 2 && (
             <button
               type="button"
               className="day-route-btn"
@@ -73,30 +194,39 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
           {day.weather && <span className="day-weather">{cleanDisplayText(day.weather)}</span>}
         </div>
       </header>
-      <div className="timeline">
-        {[
-          ...day.items.map((item) => ({ t: item.start_time, kind: 'item' as const, item })),
-          ...day.meals.map((meal) => ({ t: meal.start_time, kind: 'meal' as const, meal })),
-          ...day.transfers.map((transfer) => ({
-            t: transfer.start_time,
-            kind: 'transfer' as const,
-            transfer,
-          })),
-          ...day.free_time.map((block) => ({ t: block.start_time, kind: 'free' as const, block })),
-        ]
-          .sort((a, b) => (a.t || '').localeCompare(b.t || ''))
-          .map((entry) => {
+
+      {editing ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext
+            items={entries.map((entry) => entry.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="timeline timeline--edit">
+              {entries.map((entry) => (
+                <SortableEntryRow
+                  entry={entry}
+                  onDelete={handleDelete}
+                  onTimeChange={handleTimeChange}
+                  key={entry.id}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <div className="timeline">
+          {entries.map((entry) => {
             if (entry.kind === 'item') {
               return (
                 <ItineraryItemRow
-                  item={entry.item}
-                  info={poiInfo[cleanDisplayText(entry.item.title)]}
-                  key={entry.item.item_id}
+                  item={entry.data}
+                  info={poiInfo[cleanDisplayText(entry.data.title)]}
+                  key={entry.id}
                 />
               )
             }
             if (entry.kind === 'meal') {
-              const meal = entry.meal
+              const meal = entry.data
               const trig = placeTriggerProps(focus, {
                 label: cleanDisplayText(meal.title),
                 area: cleanDisplayText(meal.area),
@@ -104,7 +234,7 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
               return (
                 <div
                   className={`timeline-row muted ${trig.className}`.trim()}
-                  key={meal.item_id}
+                  key={entry.id}
                   {...trig.interactive}
                 >
                   <time>
@@ -124,9 +254,9 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
               )
             }
             if (entry.kind === 'transfer') {
-              const transfer = entry.transfer
+              const transfer = entry.data
               return (
-                <div className="timeline-row transfer-row" key={transfer.item_id}>
+                <div className="timeline-row transfer-row" key={entry.id}>
                   <time>
                     {hhmm(transfer.start_time)} - {hhmm(transfer.end_time)}
                   </time>
@@ -141,9 +271,9 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
                 </div>
               )
             }
-            const block = entry.block
+            const block = entry.data
             return (
-              <div className="timeline-row muted" key={block.item_id}>
+              <div className="timeline-row muted" key={entry.id}>
                 <time>
                   {hhmm(block.start_time)} - {hhmm(block.end_time)}
                 </time>
@@ -154,7 +284,9 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
               </div>
             )
           })}
-      </div>
+        </div>
+      )}
+
       {day.notes.length > 0 && (
         <ul className="text-list compact">
           {day.notes.map((note) => (
@@ -166,11 +298,62 @@ export function DayPlanCard({ day, poiInfo = {} }: { day: DayPlan; poiInfo?: Poi
   )
 }
 
-function mealTypeLabel(mealType: string): string {
-  if (mealType === 'lunch') return '점심'
-  if (mealType === 'dinner') return '저녁'
-  if (mealType === 'breakfast') return '아침'
-  return '식사'
+function SortableEntryRow({
+  entry,
+  onDelete,
+  onTimeChange,
+}: {
+  entry: DayEntry
+  onDelete: (id: string) => void
+  onTimeChange: (id: string, which: 'start' | 'end', value: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: entry.id,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style} className="edit-row">
+      <button
+        type="button"
+        className="drag-handle"
+        aria-label="드래그로 순서 변경"
+        {...attributes}
+        {...listeners}
+      >
+        ⠿
+      </button>
+      <div className="edit-times">
+        <input
+          type="time"
+          value={hhmm(entry.start)}
+          aria-label="시작 시간"
+          onChange={(event) => onTimeChange(entry.id, 'start', event.target.value)}
+        />
+        <input
+          type="time"
+          value={hhmm(entry.end)}
+          aria-label="종료 시간"
+          onChange={(event) => onTimeChange(entry.id, 'end', event.target.value)}
+        />
+      </div>
+      <div className="edit-row__main">
+        <strong>{entryTitle(entry)}</strong>
+        <p>{entrySubtitle(entry)}</p>
+      </div>
+      <button
+        type="button"
+        className="edit-delete"
+        aria-label="삭제"
+        onClick={() => onDelete(entry.id)}
+      >
+        ✕
+      </button>
+    </div>
+  )
 }
 
 export function ItineraryItemRow({ item, info }: { item: ItineraryItem; info?: PoiInfo }) {

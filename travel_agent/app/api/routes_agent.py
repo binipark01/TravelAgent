@@ -12,6 +12,7 @@ from travel_agent.app.schemas.agent import (
     AgentRunResponse,
     AgentRunSummary,
 )
+from travel_agent.app.schemas.itinerary import Itinerary
 from travel_agent.app.services.agent_service import AgentService
 
 router = APIRouter(prefix="/agent/runs", tags=["agent"])
@@ -62,6 +63,14 @@ def add_agent_message(
 @router.post("/{run_id}/continue", response_model=AgentRunDetailResponse)
 def continue_agent_run(run_id: str, db: Session = Depends(get_db)) -> AgentRunDetailResponse:
     return AgentService(db).continue_run(run_id)
+
+
+@router.post("/{run_id}/itinerary", response_model=AgentRunDetailResponse)
+def update_agent_itinerary(
+    run_id: str, itinerary: Itinerary, db: Session = Depends(get_db)
+) -> AgentRunDetailResponse:
+    # 사용자가 화면에서 직접 편집한 일정(드래그·삭제·시간)을 저장.
+    return AgentService(db).update_itinerary(run_id, itinerary)
 
 
 @router.get("/{run_id}/events", response_model=list[AgentEvent])
