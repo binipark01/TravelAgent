@@ -15,13 +15,14 @@ export function RecentTripsPage() {
   return (
     <section className="card">
       <h1>내 여행</h1>
+      <p className="fine-print">눌러서 이어서 대화하기 — 그 여행 계획을 불러와 에이전트와 계속 진행해요.</p>
       {isLoading && <p className="empty-panel-text">불러오는 중…</p>}
       {error && <ErrorState message={errorMessage(error)} />}
       {data && data.length === 0 && <EmptyState message="저장된 여행이 없습니다." />}
       {data && data.length > 0 && (
         <div className="option-list">
           {data.map((run) => (
-            <Link className="recent-trip-row" to={`/runs/${run.run_id}`} key={run.run_id}>
+            <Link className="recent-trip-row" to={`/?run=${run.run_id}`} key={run.run_id}>
               <div>
                 <strong>
                   {run.destination ?? '여행'}

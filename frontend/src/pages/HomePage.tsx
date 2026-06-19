@@ -164,12 +164,14 @@ export function HomePage() {
     }
   }, [pollQuery.data, activeTurnId])
 
-  // 마운트 시: 저장된 활성 run이 있으면 서버에서 불러와 대화·캔버스를 복원한다.
+  // 마운트 시: '최근 여행'에서 온 ?run=<id>이 있으면 그걸, 없으면 저장된 활성 run을
+  // 서버에서 불러와 대화·캔버스를 복원하고 이어서 대화할 수 있게 한다.
   const restoredRef = useRef(false)
   useEffect(() => {
     if (restoredRef.current) return
     restoredRef.current = true
-    const savedRunId = localStorage.getItem(ACTIVE_RUN_KEY)
+    const runParam = new URLSearchParams(window.location.search).get('run')
+    const savedRunId = runParam || localStorage.getItem(ACTIVE_RUN_KEY)
     if (!savedRunId) return
     getAgentRun(savedRunId)
       .then((detail) => {
@@ -185,12 +187,17 @@ export function HomePage() {
         const restored: ChatTurn = { id: 'restored', message: lastMessage, response }
         setTurns([restored])
         setRunId(savedRunId)
+        // 이어가기·새로고침을 위해 활성 run으로 저장하고, URL의 ?run=은 정리한다.
+        localStorage.setItem(ACTIVE_RUN_KEY, savedRunId)
+        if (runParam) window.history.replaceState({}, '', '/')
         if (!isTerminalStatus(detail.run.status)) {
           setActiveTurnId('restored')
           setPollingRunId(savedRunId)
         }
       })
-      .catch(() => localStorage.removeItem(ACTIVE_RUN_KEY))
+      .catch(() => {
+        if (!runParam) localStorage.removeItem(ACTIVE_RUN_KEY)
+      })
   }, [])
 
   function handleSubmit(payload: LLMAnswerRequest) {
