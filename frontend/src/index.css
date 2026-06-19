@@ -2339,12 +2339,23 @@ legend {
 }
 .poi-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   padding: 7px 10px;
   background: var(--surface-soft, rgba(148, 163, 184, 0.06));
   border-radius: 9px;
+}
+.poi-row__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.poi-why {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
 }
 .poi-row__main {
   min-width: 0;

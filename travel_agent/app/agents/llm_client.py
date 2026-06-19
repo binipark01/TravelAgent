@@ -130,7 +130,12 @@ def codex_subprocess_env() -> dict[str, str]:
 
 
 def build_codex_exec_args(
-    *, command: str, workdir: str, model: str | None, reasoning_effort: str | None
+    *,
+    command: str,
+    workdir: str,
+    model: str | None,
+    reasoning_effort: str | None,
+    enable_web_search: bool = False,
 ) -> list[str]:
     """`codex exec`(read-only, ephemeral, JSON 출력) 인자 목록을 만든다."""
     args = [resolve_codex_command(command), "-s", "read-only", "-a", "never", "-C", workdir]
@@ -138,6 +143,8 @@ def build_codex_exec_args(
         args.extend(["-m", model])
     if reasoning_effort:
         args.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
+    if enable_web_search:
+        args.append("--search")
     args.extend(
         [
             "exec",
@@ -190,11 +197,16 @@ def run_codex_json(
     model: str | None = None,
     reasoning_effort: str | None = None,
     timeout_seconds: int = 60,
+    enable_web_search: bool = False,
 ) -> dict | None:
     """Codex CLI에 prompt를 보내 JSON 객체 하나를 받는다. 실패하면 None(best-effort)."""
     with tempfile.TemporaryDirectory(prefix="travel-agent-codex-") as workdir:
         args = build_codex_exec_args(
-            command=command, workdir=workdir, model=model, reasoning_effort=reasoning_effort
+            command=command,
+            workdir=workdir,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            enable_web_search=enable_web_search,
         )
         try:
             result = subprocess.run(

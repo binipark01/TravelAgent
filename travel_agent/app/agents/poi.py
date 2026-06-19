@@ -4,6 +4,7 @@ from travel_agent.app.connectors.places.google_places_browser import (
     detect_interest,
     extract_live_pois,
 )
+from travel_agent.app.llm.curator import curate_city_pois
 from travel_agent.app.providers.base import PlacesProvider
 from travel_agent.app.schemas.providers import PlacesSearchRequest
 from travel_agent.app.schemas.trip import TripPlanState
@@ -31,27 +32,44 @@ class RestaurantAgent:
         if self.live_enabled:
             # 사용자가 명시한 취향(스시·박물관 등)을 검색에 반영한다.
             hint = " ".join([state.raw_user_message or "", *brief.must_include])
-            state.poi_candidates = extract_live_pois(
+            restaurants = extract_live_pois(
                 state.selected_destination,
                 currency=state.currency,
                 kind="restaurant",
                 interest=detect_interest(hint, "restaurant"),
                 timeout_seconds=self.live_timeout,
             )
-            state.activity_options = extract_live_pois(
+            attractions = extract_live_pois(
                 state.selected_destination,
                 currency=state.currency,
                 kind="attraction",
                 interest=detect_interest(hint, "attraction"),
                 timeout_seconds=self.live_timeout,
             )
-            return state
+        else:
+            # live가 꺼진 경우(테스트 등)에만 결정론적 mock 검색을 사용한다.
+            request = PlacesSearchRequest(
+                destination=state.selected_destination,
+                interests=brief.must_include,
+                currency=state.currency,
+            )
+            restaurants = self.provider.search_pois(request)
+            attractions = []
 
-        # live가 꺼진 경우(테스트 등)에만 결정론적 mock 검색을 사용한다.
-        request = PlacesSearchRequest(
-            destination=state.selected_destination,
+        # LLM 웹검색 큐레이션: 별점순 구글 풀을 grounding으로 넘겨, 블로그·카페·관광청을
+        # 종합해 재추천(이유·출처 포함)한다. 비활성/실패 시 구글/mock 결과를 그대로 쓴다.
+        curated = curate_city_pois(
+            state.selected_destination,
             interests=brief.must_include,
+            start_date=brief.start_date,
             currency=state.currency,
+            attraction_pool=attractions,
+            restaurant_pool=restaurants,
         )
-        state.poi_candidates = self.provider.search_pois(request)
+        if curated:
+            state.poi_candidates = curated.restaurants or restaurants
+            state.activity_options = curated.attractions or attractions
+        else:
+            state.poi_candidates = restaurants
+            state.activity_options = attractions
         return state
