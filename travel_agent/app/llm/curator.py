@@ -17,6 +17,7 @@ from urllib.parse import quote_plus
 
 from travel_agent.app.agents.llm_client import codex_brief_available, run_codex_json
 from travel_agent.app.config import Settings, get_settings
+from travel_agent.app.llm.source_guide import source_hints_block
 from travel_agent.app.schemas.common import Location, Money, SourceRef
 from travel_agent.app.schemas.providers import (
     NearbyDestination,
@@ -192,6 +193,7 @@ def curate_city_pois(
         f"여행자 관심사: {interest_text}.{_season_hint(start_date)}\n"
         "단순 별점순이 아니라 현지 평판·혼잡도·계절성·가성비를 함께 보고 고른다. "
         "맛집은 한 종류(예: 스시)만 몰리지 않게 음식 종류를 다양하게 섞어라.\n"
+        f"{source_hints_block(destination)}\n"
         "아래 구글지도 후보를 참고하되(실재하는 곳 위주), 여러 출처가 강하게 추천하는 "
         "'숨은 명소'는 후보에 없어도 추가해도 된다. 단 실제로 존재하는 곳만, 그리고 각 항목에 "
         "근거 출처 URL을 최소 1개 붙여라(지어내지 마라).\n"
@@ -242,6 +244,7 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
         "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 네이버 블로그·카페, "
         "여행 커뮤니티, 공식 관광청 정보를 검색해 "
         f"'{destination}'에서 기차·버스·렌터카로 닿는 **근교 당일치기** 명소를 종합 추천하라.\n"
+        f"{source_hints_block(destination)}\n"
         "각 명소의 대략 이동시간·교통수단·볼거리를 적고, 근거 출처 URL을 최소 1개 붙여라. "
         "실제 존재하는 곳만, 지어내지 마라. 적당한 근교가 거의 없으면 destinations를 빈 배열로.\n\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
