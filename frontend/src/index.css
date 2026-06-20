@@ -56,8 +56,8 @@ a {
 }
 
 .app-shell {
-  /* 전체 UI를 브라우저 줌 한 틱(~10%)만큼 키운다. 값만 바꾸면 더/덜 키울 수 있음. */
-  --app-zoom: 1.1;
+  /* 전체 UI 배율. 1=브라우저 100% 기준 정상 크기. 더 키우려면 1.05~1.1, 줄이려면 0.9~0.95. */
+  --app-zoom: 1;
   zoom: var(--app-zoom);
   min-height: calc(100vh / var(--app-zoom));
 }
