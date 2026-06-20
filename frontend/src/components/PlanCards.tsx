@@ -87,11 +87,13 @@ export function PlanCards({
         .getElementById('trip-map-card')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     )
-  // 한 지점의 지오코딩 쿼리(좌표 있으면 좌표, 없으면 '이름, 지역').
+  // 한 지점의 지오코딩 쿼리(좌표 있으면 좌표, 없으면 '이름, 도시').
+  // 도시(hub)로 고정한다. 식사 항목의 area엔 위치가 아닌 '음식 종류'가 들어가서,
+  // 그걸 붙이면 'Le Vent d'Armor, 브르타뉴식' → 브르타뉴로 잘못 지오코딩되기 때문.
   const placeQuery = (place: MapPlacePick) =>
     place.lat != null && place.lng != null
       ? `${place.lat},${place.lng}`
-      : [place.label, place.area || hub].filter(Boolean).join(', ')
+      : [place.label, hub].filter(Boolean).join(', ')
 
   const selectPlace = (place: MapPlacePick) => {
     setFocus({
