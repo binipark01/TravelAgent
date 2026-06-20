@@ -10,7 +10,6 @@ from travel_agent.app.providers.base import RoutesProvider
 from travel_agent.app.schemas.common import Location, Money
 from travel_agent.app.schemas.itinerary import (
     DayPlan,
-    FreeTimeBlock,
     Itinerary,
     ItineraryItem,
     MealSuggestion,
@@ -196,16 +195,18 @@ class RouteAgent:
 
         stops = arranged.stops
         for index, stop in enumerate(stops):
-            # 점심·저녁을 동선 흐름 속에 끼워넣는다(시각이 지나면 다음 방문 전에 삽입).
-            if not lunch_done and arranged.lunch and clock >= time(12, 0):
-                end = self._add_minutes(clock, 60)
-                add_meal("lunch", arranged.lunch, clock, end)
-                clock = end
+            # 점심(11~14시)·저녁(17~22시)을 동선 흐름 속에 끼워넣되 시간대를 벗어나지 않게 한다.
+            if not lunch_done and arranged.lunch and clock >= time(11, 30):
+                start = min(clock, time(14, 0))
+                meal_end = self._add_minutes(start, 60)
+                add_meal("lunch", arranged.lunch, start, meal_end)
+                clock = max(clock, meal_end)
                 lunch_done = True
             if not dinner_done and arranged.dinner and clock >= time(17, 30):
-                end = self._add_minutes(clock, 60)
-                add_meal("dinner", arranged.dinner, clock, end)
-                clock = end
+                start = min(clock, time(22, 0))
+                meal_end = self._add_minutes(start, 60)
+                add_meal("dinner", arranged.dinner, start, meal_end)
+                clock = max(clock, meal_end)
                 dinner_done = True
             poi = self._lookup(attr_by_title, stop.title)
             end = self._add_minutes(clock, stop.duration_min)
@@ -226,21 +227,11 @@ class RouteAgent:
                 )
                 clock = transfer_end
 
-        # 흐름상 못 넣은 식사는 표준 시각으로 보강한다.
+        # 흐름상 못 넣은 식사는 시간대 안 표준 시각으로 보강한다(점심 12:30, 저녁 18:30).
         if not lunch_done and arranged.lunch:
             add_meal("lunch", arranged.lunch, time(12, 30), time(13, 30))
         if not dinner_done and arranged.dinner:
             add_meal("dinner", arranged.dinner, time(18, 30), time(19, 30))
-
-        day.free_time.append(
-            FreeTimeBlock(
-                item_id=new_id("free"),
-                title="자유 시간",
-                start_time=time(20, 30),
-                end_time=time(21, 30),
-                notes=["과밀 일정을 피하기 위한 여유 시간입니다."],
-            )
-        )
         return day
 
     def _arranged_item(
@@ -394,15 +385,6 @@ class RouteAgent:
                 )
             )
         day.meals.extend(self._meals_for_day(day_number - 1, restaurants, state.currency))
-        day.free_time.append(
-            FreeTimeBlock(
-                item_id=new_id("free"),
-                title="자유 시간",
-                start_time=time(20, 30),
-                end_time=time(21, 30),
-                notes=["과밀 일정을 피하기 위한 여유 시간입니다."],
-            )
-        )
         return day
 
     def _meals_for_day(

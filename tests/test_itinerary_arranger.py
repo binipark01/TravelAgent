@@ -130,6 +130,41 @@ def test_route_agent_builds_itinerary_from_arrangement(monkeypatch: pytest.Monke
     assert any(meal.title == "さわやか" for meal in day1.meals)
 
 
+def test_no_free_time_and_meal_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import time as time_cls
+
+    state = _state()
+    state.activity_options = [_poi("A", "중심"), _poi("B", "중심"), _poi("C", "중심")]
+    state.poi_candidates = [_poi("점심집", "중심"), _poi("저녁집", "중심")]
+    arrangement = ArrangedItinerary(
+        days=[
+            ArrangedDay(
+                day=1,
+                area="중심",
+                note=None,
+                stops=[
+                    ArrangedStop("A", 90, 10, "도보"),
+                    ArrangedStop("B", 90, 10, "도보"),
+                    ArrangedStop("C", 90, 0, "도보"),
+                ],
+                lunch="점심집",
+                dinner="저녁집",
+            )
+        ]
+    )
+    monkeypatch.setattr(route_optimizer, "arrange_itinerary", lambda *a, **k: arrangement)
+    monkeypatch.setattr(route_optimizer, "fetch_trip_weather", lambda *a, **k: {})
+
+    RouteAgent(build_mock_provider_bundle().routes).run(state)
+    for day in state.optimized_itinerary.days:
+        assert day.free_time == []  # 자유 시간 제거
+        for meal in day.meals:
+            if meal.meal_type == "lunch":
+                assert time_cls(11, 0) <= meal.start_time <= time_cls(14, 0)
+            if meal.meal_type == "dinner":
+                assert time_cls(17, 0) <= meal.start_time <= time_cls(22, 0)
+
+
 def test_route_agent_falls_back_to_heuristic_when_no_arrangement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
