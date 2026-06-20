@@ -16,6 +16,7 @@ from travel_agent.app.agents.llm_client import (
     codex_brief_available,
 )
 from travel_agent.app.agents.local_transport import LocalTransportAgent
+from travel_agent.app.agents.multicity import MultiCityAgent
 from travel_agent.app.agents.nearby import NearbyAgent
 from travel_agent.app.agents.poi import RestaurantAgent
 from travel_agent.app.agents.presentation import PresentationAgent
@@ -84,6 +85,7 @@ class TravelSupervisorAgent:
         self.nearby_agent = NearbyAgent()
         self.stay_area_agent = StayAreaAgent()
         self.checklist_agent = ChecklistAgent()
+        self.multicity_agent = MultiCityAgent()
         self.transport_tickets_agent = TransportTicketsAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
@@ -166,6 +168,7 @@ class TravelSupervisorAgent:
         state.nearby_guide = None
         state.stay_area_guide = None
         state.prep_checklist = None
+        state.multicity_plan = None
         state.transport_tickets = None
         # 재검색 판정용 도메인 서명 캐시도 비워 확실히 다시 검색하게 한다.
         for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
@@ -379,6 +382,17 @@ class TravelSupervisorAgent:
                     f"{len(state.prep_checklist.groups)}개 그룹"
                     if state.prep_checklist
                     else "준비물 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "MultiCityAgent",
+                "멀티시티 동선 정리",
+                lambda: self.multicity_agent.run(state),
+                lambda: (
+                    f"{len(state.multicity_plan.segments)}개 도시 동선"
+                    if state.multicity_plan
+                    else "단일 목적지"
                 ),
             )
             self._recorded_step(

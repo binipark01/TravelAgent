@@ -32,6 +32,7 @@ class PresentationAgent:
             nearby_guide=state.nearby_guide,
             stay_area_guide=state.stay_area_guide,
             prep_checklist=state.prep_checklist,
+            multicity_plan=state.multicity_plan,
             transport_tickets=state.transport_tickets,
             risk_findings=state.risk_findings,
             critic_findings=state.critic_findings,

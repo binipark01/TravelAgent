@@ -17,6 +17,7 @@ import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
 import { MapCard } from './MapCard'
 import { ChecklistCard } from './ChecklistCard'
+import { MultiCityCard } from './MultiCityCard'
 import { NearbyCard } from './NearbyCard'
 import { StayAreaCard } from './StayAreaCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
@@ -51,6 +52,7 @@ export function PlanCards({
   const nearby = plan.nearby_guide ?? null
   const stayAreas = plan.stay_area_guide ?? null
   const checklist = plan.prep_checklist ?? null
+  const multicity = plan.multicity_plan ?? null
   const tickets = plan.transport_tickets ?? null
 
   // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
@@ -132,6 +134,7 @@ export function PlanCards({
             onReset={() => setFocus(null)}
           />
         )}
+      {multicity != null && <MultiCityCard plan={multicity} />}
       {hasItinerary && (
         <ItineraryTimeline
           itinerary={itinerary}

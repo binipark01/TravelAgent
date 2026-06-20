@@ -213,6 +213,31 @@ class PrepChecklist(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class CitySegment(StrictBaseModel):
+    city: str
+    nights: int  # 그 도시에서 묵는 밤 수
+    highlights: list[str] = Field(default_factory=list)
+
+
+class IntercityLeg(StrictBaseModel):
+    origin: str
+    destination: str
+    mode: str  # 기차/항공/버스/페리
+    duration: str  # 예: 약 2시간 20분
+    booking_hint: str | None = None  # 예: Eurostar(eurostar.com)
+
+
+class MultiCityPlan(StrictBaseModel):
+    """복수 목적지 여행의 도시별 일수 배분 + 도시간 이동 오버뷰."""
+
+    destinations: list[str] = Field(default_factory=list)
+    summary: str
+    segments: list[CitySegment] = Field(default_factory=list)
+    legs: list[IntercityLeg] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
+    metadata: ProviderMetadata
+
+
 class BookingPlatform(StrictBaseModel):
     name: str  # 예: 12Go Asia
     url: str  # 딥링크(검색/랜딩)

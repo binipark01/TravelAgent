@@ -20,6 +20,9 @@ from travel_agent.app.config import Settings, get_settings
 from travel_agent.app.llm.source_guide import source_hints_block
 from travel_agent.app.schemas.common import Location, Money, SourceRef
 from travel_agent.app.schemas.providers import (
+    CitySegment,
+    IntercityLeg,
+    MultiCityPlan,
     NearbyDestination,
     NearbyGuide,
     POIOption,
@@ -44,6 +47,7 @@ _CITY_CACHE: dict[str, CuratedPois] = {}
 _NEARBY_CACHE: dict[str, NearbyGuide] = {}
 _STAY_CACHE: dict[str, StayAreaGuide] = {}
 _CHECK_CACHE: dict[str, PrepChecklist] = {}
+_MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
 
 
 def clear_cache() -> None:
@@ -52,6 +56,7 @@ def clear_cache() -> None:
     _NEARBY_CACHE.clear()
     _STAY_CACHE.clear()
     _CHECK_CACHE.clear()
+    _MULTICITY_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -439,3 +444,89 @@ def curate_checklist(destination: str, *, context: str) -> PrepChecklist | None:
     )
     _CHECK_CACHE[cache_key] = checklist
     return checklist
+
+
+def _coerce_nights(value: object, default: int) -> int:
+    try:
+        nights = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(nights, 30))
+
+
+def curate_multicity(
+    destinations: list[str], *, total_days: int | None
+) -> MultiCityPlan | None:
+    """복수 목적지의 도시별 일수 배분 + 도시간 이동을 LLM 웹검색으로 정리한다.
+
+    도시간 기차/항공 소요·예매처는 변동 정보라 web search를 쓴다. 비활성/실패 시 None.
+    """
+    settings = get_settings()
+    if not _enabled(settings) or len(destinations) < 2:
+        return None
+    cities = ", ".join(destinations)
+    cache_key = cities.lower()
+    if cache_key in _MULTICITY_CACHE:
+        return _MULTICITY_CACHE[cache_key]
+
+    days_hint = f"총 {total_days}일을 도시별로 합리적으로 배분하라." if total_days else ""
+    prompt = (
+        "너는 한국인 여행자를 위한 멀티시티 동선 플래너다. live web search로 도시간 이동수단·"
+        f"소요시간·예매처를 확인해 '{cities}' 여행을 정리하라.\n"
+        f"방문 순서를 효율적으로 정하고, 각 도시 추천 숙박일수와 핵심 볼거리, 도시간 이동"
+        f"(기차/항공/버스, 대략 소요, 예매처)을 적어라. {days_hint} 출처는 신뢰 가능한 곳만.\n\n"
+        "출력은 설명·코드펜스 없이 JSON 하나만:\n"
+        "{\n"
+        '  "summary": "전체 동선 한두 문장",\n'
+        '  "segments": [{"city":"파리", "nights":3, "highlights":["루브르","에펠탑"]}],\n'
+        '  "legs": [{"origin":"파리", "destination":"런던", "mode":"기차(유로스타)", '
+        '"duration":"약 2시간 20분", "booking_hint":"eurostar.com"}],\n'
+        '  "tips": ["도시간 이동권은 미리 예매가 저렴"]\n'
+        "}"
+    )
+    data = _run(prompt, settings)
+    if not isinstance(data, dict):
+        return None
+    segments: list[CitySegment] = []
+    for raw in data.get("segments") or []:
+        if not isinstance(raw, dict):
+            continue
+        city = _clean_str(raw.get("city"))
+        if not city:
+            continue
+        segments.append(
+            CitySegment(
+                city=city,
+                nights=_coerce_nights(raw.get("nights"), 2),
+                highlights=_clean_list(raw.get("highlights")),
+            )
+        )
+    if not segments:
+        return None
+    legs: list[IntercityLeg] = []
+    for raw in data.get("legs") or []:
+        if not isinstance(raw, dict):
+            continue
+        origin = _clean_str(raw.get("origin"))
+        dest = _clean_str(raw.get("destination"))
+        if not origin or not dest:
+            continue
+        legs.append(
+            IntercityLeg(
+                origin=origin,
+                destination=dest,
+                mode=(raw.get("mode") or "이동").strip() or "이동",
+                duration=(raw.get("duration") or "소요시간 확인").strip() or "소요시간 확인",
+                booking_hint=_clean_str(raw.get("booking_hint")),
+            )
+        )
+    plan = MultiCityPlan(
+        destinations=destinations,
+        summary=(data.get("summary") or f"{cities} 멀티시티 동선").strip(),
+        segments=segments,
+        legs=legs,
+        tips=_clean_list(data.get("tips")),
+        metadata=_llm_metadata(_maps_url(destinations[0], destinations[0])),
+    )
+    _MULTICITY_CACHE[cache_key] = plan
+    return plan

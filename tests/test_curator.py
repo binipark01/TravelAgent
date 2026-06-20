@@ -198,6 +198,50 @@ def test_curate_nearby_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None:
     assert guide.metadata.source_ref.provider == "llm_curation"
 
 
+_FAKE_MULTI = {
+    "summary": "파리 3박 후 유로스타로 런던 2박",
+    "segments": [
+        {"city": "파리", "nights": 3, "highlights": ["루브르", "에펠탑"]},
+        {"city": "런던", "nights": 2, "highlights": ["대영박물관"]},
+    ],
+    "legs": [
+        {
+            "origin": "파리",
+            "destination": "런던",
+            "mode": "기차(유로스타)",
+            "duration": "약 2시간 20분",
+            "booking_hint": "eurostar.com",
+        }
+    ],
+    "tips": ["유로스타는 미리 예매가 저렴"],
+}
+
+
+def test_curate_multicity_disabled_or_single_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # LLM 꺼짐 → None.
+    assert curator.curate_multicity(["파리", "런던"], total_days=5) is None
+    # 활성이어도 목적지 1개면 None.
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    assert curator.curate_multicity(["파리"], total_days=5) is None
+
+
+def test_curate_multicity_builds_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: _FAKE_MULTI)
+
+    plan = curator.curate_multicity(["파리", "런던"], total_days=5)
+    assert plan is not None
+    assert plan.destinations == ["파리", "런던"]
+    assert [s.city for s in plan.segments] == ["파리", "런던"]
+    assert plan.segments[0].nights == 3
+    assert len(plan.legs) == 1
+    assert plan.legs[0].mode == "기차(유로스타)"
+    assert plan.legs[0].booking_hint == "eurostar.com"
+    assert plan.metadata.source_ref.provider == "llm_curation"
+
+
 def test_curate_city_caches_single_call(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
 

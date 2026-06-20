@@ -2282,6 +2282,48 @@ legend {
   line-height: 1.5;
 }
 
+/* 멀티시티 동선 */
+.multicity-flow {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.multicity-seg {
+  padding: 10px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.multicity-seg__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.multicity-seg__head strong {
+  font-size: 15px;
+}
+.multicity-nights {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent, #2563eb);
+}
+.multicity-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.multicity-leg {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.multicity-book {
+  color: var(--primary, #0f6b5a);
+}
+
 /* 준비물 체크리스트 — 카테고리 그리드 */
 .checklist-grid {
   display: grid;

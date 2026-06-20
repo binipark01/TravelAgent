@@ -107,6 +107,7 @@ export interface TripPlanState {
   nearby_guide?: NearbyGuide | null
   stay_area_guide?: StayAreaGuide | null
   prep_checklist?: PrepChecklist | null
+  multicity_plan?: MultiCityPlan | null
   transport_tickets?: TransportTicketGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
@@ -208,6 +209,28 @@ export interface PrepChecklist {
   destination: string
   summary: string
   groups: PrepGroup[]
+}
+
+export interface CitySegment {
+  city: string
+  nights: number
+  highlights: string[]
+}
+
+export interface IntercityLeg {
+  origin: string
+  destination: string
+  mode: string
+  duration: string
+  booking_hint?: string | null
+}
+
+export interface MultiCityPlan {
+  destinations: string[]
+  summary: string
+  segments: CitySegment[]
+  legs: IntercityLeg[]
+  tips: string[]
 }
 
 export interface EmergencyContact {
