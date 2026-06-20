@@ -165,6 +165,37 @@ def test_no_free_time_and_meal_windows(monkeypatch: pytest.MonkeyPatch) -> None:
                 assert time_cls(17, 0) <= meal.start_time <= time_cls(22, 0)
 
 
+def test_dinner_adaptive_and_meal_dedup(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import time as time_cls
+
+    state = _state()
+    state.activity_options = [_poi("A", "중심"), _poi("점심집", "중심")]
+    state.poi_candidates = [_poi("점심집", "중심"), _poi("저녁집", "중심")]
+    # '점심집'을 관광 stop에도 넣어 중복 상황을 만든다(식당으로도 씀).
+    arrangement = ArrangedItinerary(
+        days=[
+            ArrangedDay(
+                day=1,
+                area="중심",
+                note=None,
+                stops=[ArrangedStop("A", 90, 0, "도보"), ArrangedStop("점심집", 60, 0, "도보")],
+                lunch="점심집",
+                dinner="저녁집",
+            )
+        ]
+    )
+    monkeypatch.setattr(route_optimizer, "arrange_itinerary", lambda *a, **k: arrangement)
+    monkeypatch.setattr(route_optimizer, "fetch_trip_weather", lambda *a, **k: {})
+
+    RouteAgent(build_mock_provider_bundle().routes).run(state)
+    day = state.optimized_itinerary.days[0]
+    # 식당으로 쓴 '점심집'은 관광지 items에 중복으로 들어가지 않는다.
+    assert "점심집" not in [item.title for item in day.items]
+    # 저녁은 17~21시 안(마지막 일정이 일찍 끝나도 18:30 고정 공백이 아니라 당겨짐).
+    dinner = next(m for m in day.meals if m.meal_type == "dinner")
+    assert time_cls(17, 0) <= dinner.start_time <= time_cls(21, 0)
+
+
 def test_route_agent_falls_back_to_heuristic_when_no_arrangement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

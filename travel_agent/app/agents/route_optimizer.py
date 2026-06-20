@@ -198,7 +198,9 @@ class RouteAgent:
                 )
             )
 
-        stops = arranged.stops
+        # 식당으로 쓴 곳을 관광지로도 중복 배치하지 않는다(같은 카페가 점심+관광에 뜨는 버그).
+        meal_titles = {t.strip().lower() for t in (arranged.lunch, arranged.dinner) if t}
+        stops = [s for s in arranged.stops if s.title.strip().lower() not in meal_titles]
         for index, stop in enumerate(stops):
             # 점심(11~14시)·저녁(17~22시)을 동선 흐름 속에 끼워넣되 시간대를 벗어나지 않게 한다.
             if not lunch_done and arranged.lunch and clock >= time(11, 30):
@@ -232,11 +234,15 @@ class RouteAgent:
                 )
                 clock = transfer_end
 
-        # 흐름상 못 넣은 식사는 시간대 안 표준 시각으로 보강한다(점심 12:30, 저녁 18:30).
+        # 흐름상 못 넣은 식사 보강. 저녁은 마지막 일정이 일찍 끝나면 그 직후(최소 17시)로
+        # 당겨 큰 공백을 줄인다(고정 18:30이면 16시쯤 끝난 날 2시간 넘게 비어 버림).
         if not lunch_done and arranged.lunch:
             add_meal("lunch", arranged.lunch, time(12, 30), time(13, 30))
         if not dinner_done and arranged.dinner:
-            add_meal("dinner", arranged.dinner, time(18, 30), time(19, 30))
+            dinner_start = min(max(clock, time(17, 0)), time(21, 0))
+            add_meal(
+                "dinner", arranged.dinner, dinner_start, self._add_minutes(dinner_start, 60)
+            )
         return day
 
     def _arranged_item(
