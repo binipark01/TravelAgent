@@ -4,7 +4,9 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from math import ceil
 
+from travel_agent.app.connectors.nearby.day_trips import lookup_nearby
 from travel_agent.app.connectors.weather.open_meteo import fetch_trip_weather
+from travel_agent.app.llm.curator import curate_nearby
 from travel_agent.app.llm.itinerary_arranger import ArrangedDay, arrange_itinerary
 from travel_agent.app.providers.base import RoutesProvider
 from travel_agent.app.schemas.common import Location, Money
@@ -49,9 +51,11 @@ class RouteAgent:
         # 날씨를 먼저 받아 배치에 반영하고(비→실내, 맑음→야외) 표시에도 재사용한다.
         weather = self._fetch_weather(state, brief, days_count)
         weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
+        # 근교 당일치기 후보 — 일정이 여유로우면 배치기가 하루를 근교로 배정한다(빡빡하면 생략).
+        nearby_options = self._nearby_options(state.selected_destination)
 
-        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨 포함) 그걸 쓰고, 비활성/실패
-        # 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
+        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교 포함) 그걸 쓰고, 비활성/
+        # 실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
         arrangement = arrange_itinerary(
             state.selected_destination or "여행지",
             days_count=days_count,
@@ -60,6 +64,7 @@ class RouteAgent:
             pace=brief.pace,
             start_date=brief.start_date,
             weather_by_day=weather_by_day,
+            nearby_options=nearby_options,
         )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
@@ -271,6 +276,16 @@ class RouteAgent:
             notes=[],
             feasibility_flags=[],
         )
+
+    @staticmethod
+    def _nearby_options(destination: str | None) -> list[str]:
+        """근교 당일치기 후보 이름 목록(있으면). curate_nearby가 캐시되어 NearbyAgent와 공유."""
+        if not destination:
+            return []
+        guide = curate_nearby(destination) or lookup_nearby(destination)
+        if not guide:
+            return []
+        return [dest.name for dest in guide.destinations][:6]
 
     def _fetch_weather(self, state, brief, days_count: int) -> dict[date, str]:
         """여행 날짜별 날씨를 한 번 받아 dict로 돌려준다(실패하면 빈 dict)."""

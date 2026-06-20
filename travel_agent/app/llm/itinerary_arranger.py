@@ -75,6 +75,19 @@ def _weather_block(weather_by_day: dict[int, str] | None) -> str:
     )
 
 
+def _nearby_block(nearby_options: list[str] | None) -> str:
+    if not nearby_options:
+        return ""
+    names = ", ".join(nearby_options[:6])
+    return (
+        f"\n근교 당일치기 후보: {names}.\n"
+        "일정이 여유로우면(페이스가 여유롭거나 날 수에 비해 시내 명소가 넉넉하지 않으면) "
+        "하루를 근교 당일치기로 배정해도 좋다. 그 날은 stops에 근교 1곳을 넣고 area를 "
+        "'근교: 도시명'으로, duration_min을 크게(300~480) 줘라. 빡빡하면 근교는 넣지 말고 "
+        "시내만 채워라.\n"
+    )
+
+
 def arrange_itinerary(
     destination: str,
     *,
@@ -84,6 +97,7 @@ def arrange_itinerary(
     pace: str | None,
     start_date: date | None,
     weather_by_day: dict[int, str] | None = None,
+    nearby_options: list[str] | None = None,
 ) -> ArrangedItinerary | None:
     """관광지·식당을 날짜별 동선으로 배치한다. 비활성/실패 시 None."""
     if not _enabled() or days_count < 1 or not attractions:
@@ -103,7 +117,8 @@ def arrange_itinerary(
         "추정하고, 점심·저녁 식당은 그날 동선 근처로 고른다. "
         f"페이스는 {pace_hint}.{season} "
         "목록에 없는 장소는 쓰지 마라. 가까운 area끼리 같은 날에 모은다.\n"
-        f"{_weather_block(weather_by_day)}\n"
+        f"{_weather_block(weather_by_day)}"
+        f"{_nearby_block(nearby_options)}\n"
         f"[관광지]\n{_pool_block(attractions, 14)}\n\n"
         f"[식당]\n{_pool_block(restaurants, 12)}\n\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
