@@ -1876,6 +1876,15 @@ legend {
   color: var(--primary, #0f766e);
 }
 
+/* 지연 로딩 placeholder */
+.route-loading,
+.map-loading {
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 /* 장소별 💡 코멘트 모음 박스(일정 아래) */
 .day-tips {
   display: grid;

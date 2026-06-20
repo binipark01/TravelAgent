@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import type { Itinerary } from '../types/itinerary'
 import type { TripPlanState } from '../types/trip'
 import { cleanDisplayText } from '../utils/format'
@@ -15,7 +15,6 @@ import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
-import { MapCard } from './MapCard'
 import { ChecklistCard } from './ChecklistCard'
 import { MultiCityCard } from './MultiCityCard'
 import { NearbyCard } from './NearbyCard'
@@ -26,6 +25,9 @@ import { SafetyCard } from './SafetyCard'
 import { TransportTicketsCard } from './TransportTicketsCard'
 import { TransportOptionsCard } from './TransportOptionsCard'
 import { VisaCard } from './VisaCard'
+
+// 지도(@googlemaps/js-api-loader 포함)는 무거우니 지도가 있을 때만 로드한다.
+const MapCard = lazy(() => import('./MapCard').then((m) => ({ default: m.MapCard })))
 
 /** TripPlanState에서 실시간(non-mock) 결과 카드를 렌더한다. 채팅·저장 뷰 공용. */
 export function PlanCards({
@@ -56,13 +58,17 @@ export function PlanCards({
   const tickets = plan.transport_tickets ?? null
 
   // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
-  const poiInfo: PoiInfoMap = {}
-  for (const option of [...pois, ...activities]) {
-    poiInfo[cleanDisplayText(option.title)] = {
-      rating: option.rating ?? null,
-      minutes: option.recommended_duration_minutes || null,
+  // 폴링마다(1.2초) 재계산하지 않도록 후보가 바뀔 때만 다시 만든다.
+  const poiInfo: PoiInfoMap = useMemo(() => {
+    const map: PoiInfoMap = {}
+    for (const option of [...pois, ...activities]) {
+      map[cleanDisplayText(option.title)] = {
+        rating: option.rating ?? null,
+        minutes: option.recommended_duration_minutes || null,
+      }
     }
-  }
+    return map
+  }, [pois, activities])
 
   const hasAny =
     flights.length > 0 ||
@@ -129,12 +135,14 @@ export function PlanCards({
     <MapFocusContext.Provider value={focusValue}>
       <div className="assistant-detail-cards plan-cards">
         {tickets != null && (
-          <MapCard
-            key={tickets.hub ?? 'map'}
-            guide={tickets}
-            focus={focus}
-            onReset={() => setFocus(null)}
-          />
+          <Suspense fallback={<div className="card map-loading">지도 불러오는 중…</div>}>
+            <MapCard
+              key={tickets.hub ?? 'map'}
+              guide={tickets}
+              focus={focus}
+              onReset={() => setFocus(null)}
+            />
+          </Suspense>
         )}
       {multicity != null && <MultiCityCard plan={multicity} />}
       {hasItinerary && (
