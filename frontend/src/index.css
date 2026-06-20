@@ -1937,6 +1937,12 @@ legend {
   margin-top: 6px;
 }
 
+.metric-row .metric-sub {
+  font-size: 12px;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
 .breakdown-list {
   display: grid;
   gap: 8px;

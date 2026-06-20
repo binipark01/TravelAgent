@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from travel_agent.app.llm.advisor import estimate_daily_costs
 from travel_agent.app.schemas.budget import BudgetBreakdown, BudgetEstimate
 from travel_agent.app.schemas.common import CriticFinding, FindingCategory, FindingSeverity
 from travel_agent.app.schemas.trip import TripPlanState
+
+_DEFAULT_FOOD_PER_DAY = 60_000
+_DEFAULT_TRANSPORT_PER_DAY = 15_000
 
 
 class BudgetAgent:
@@ -14,6 +18,8 @@ class BudgetAgent:
         flight_prices = [
             option.price.amount for option in state.transport_options if option.price.amount
         ]
+        # 표시 운임(메타서치 기준)을 그대로 쓴다. 1인/총액 기준이 소스마다 달라 인원 곱은
+        # 하지 않고, assumptions에 '표시 운임 기준'임을 명시한다(과대계상 방지).
         flights = min(flight_prices) if flight_prices else 0
         hotel_totals = [
             option.total_price.amount
@@ -22,8 +28,19 @@ class BudgetAgent:
         ]
         accommodation = min(hotel_totals) if hotel_totals else 0
         has_live = bool(state.transport_options or state.accommodation_options)
-        food = travelers * days * 60_000
-        local_transport = travelers * days * 15_000
+        # 1인 1일 식비·현지교통: 도시 물가를 LLM이 추정(실패 시 기본값). 유럽/동남아 편차 반영.
+        destination = state.selected_destination or (
+            brief.destinations[0] if brief and brief.destinations else ""
+        )
+        daily = estimate_daily_costs(
+            destination, travel_style=brief.travel_style if brief else None, currency=state.currency
+        )
+        food_per_day, transport_per_day = daily or (
+            _DEFAULT_FOOD_PER_DAY,
+            _DEFAULT_TRANSPORT_PER_DAY,
+        )
+        food = travelers * days * food_per_day
+        local_transport = travelers * days * transport_per_day
         activities = (
             sum(
                 item.estimated_cost.amount
@@ -80,19 +97,39 @@ class BudgetAgent:
                 suggested_fix="항공·숙소 예약 사이트에서 최종 가격과 취소 규정을 확인하세요.",
             )
         )
+        # 1인 1일 현지 경비(식비+교통+입장료) — 항공·숙박 제외한 '하루 쓸 돈'.
+        on_ground = food + local_transport + activities
+        per_day = round(on_ground / (travelers * days), 2) if travelers and days else None
+        daily_note = (
+            "도시 물가 기준 LLM 추정"
+            if daily
+            else f"기본값(식비 {_DEFAULT_FOOD_PER_DAY:,}·교통 {_DEFAULT_TRANSPORT_PER_DAY:,})"
+        )
         state.budget = BudgetEstimate(
             total_estimated_cost=round(total, 2),
             per_person_estimated_cost=round(total / travelers, 2),
+            per_day_estimated_cost=per_day,
+            total_local_label=self._local_total(total, state),
             breakdown=breakdown,
             currency=state.currency,
             confidence="medium" if has_live else "low",
             budget_warnings=warnings,
             assumptions=[
-                "항공·숙박은 실시간 검색된 최저가 기준입니다."
+                "항공·숙박은 검색 최저가(표시 운임 기준)입니다."
                 if has_live
                 else "항공·숙박 실시간 가격을 가져오지 못했습니다.",
-                f"식비 1인 1일 60,000 {state.currency}, 현지 교통 15,000 {state.currency} 가정.",
+                f"식비 1인 1일 {food_per_day:,} {state.currency}, 현지 교통 "
+                f"{transport_per_day:,} {state.currency} ({daily_note}).",
                 "예비비 10%를 포함했습니다.",
             ],
         )
         return state
+
+    @staticmethod
+    def _local_total(total_krw: float, state: TripPlanState) -> str | None:
+        """총액을 현지 통화로 환산한 라벨(fx_info가 있을 때만)."""
+        fx = state.fx_info
+        if not fx or not fx.target_per_base or fx.target_currency == state.currency:
+            return None
+        local = total_krw * fx.target_per_base
+        return f"약 {round(local):,} {fx.target_currency}"

@@ -17,6 +17,8 @@ class BudgetBreakdown(StrictBaseModel):
 class BudgetEstimate(StrictBaseModel):
     total_estimated_cost: float
     per_person_estimated_cost: float
+    per_day_estimated_cost: float | None = None  # 1인 1일 현지 경비(식비+교통+입장료)
+    total_local_label: str | None = None  # 현지 통화 환산 총액(예: "약 ¥123,000")
     breakdown: BudgetBreakdown
     currency: str = "KRW"
     confidence: str = "medium"

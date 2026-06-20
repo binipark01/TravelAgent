@@ -37,11 +37,20 @@ export function BudgetBreakdownCard({ budget }: { budget?: BudgetEstimate | null
             <div>
               <span>총 예상 비용</span>
               <strong>{formatNumber(budget.total_estimated_cost, budget.currency)}</strong>
+              {budget.total_local_label && (
+                <span className="metric-sub">{cleanDisplayText(budget.total_local_label)}</span>
+              )}
             </div>
             <div>
               <span>1인 예상 비용</span>
               <strong>{formatNumber(budget.per_person_estimated_cost, budget.currency)}</strong>
             </div>
+            {budget.per_day_estimated_cost != null && (
+              <div>
+                <span>1인 1일 현지경비</span>
+                <strong>{formatNumber(budget.per_day_estimated_cost, budget.currency)}</strong>
+              </div>
+            )}
           </div>
           {(() => {
             const entries = Object.entries(budget.breakdown) as [

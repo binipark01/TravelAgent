@@ -392,6 +392,11 @@ class TravelSupervisorAgent:
                     else "교통권 데이터 없음"
                 ),
             )
+        # 예산은 FX보다 먼저 돌아 현지통화 환산을 못 채운다 → FX 완료 후 여기서 보강.
+        if state.budget and state.fx_info and not state.budget.total_local_label:
+            state.budget.total_local_label = BudgetAgent._local_total(
+                state.budget.total_estimated_cost, state
+            )
         self._collect_provider_source_refs(state)
 
         set_status(state, TripStatus.validating, "Agent validation stage started.")

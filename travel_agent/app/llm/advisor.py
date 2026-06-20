@@ -14,6 +14,42 @@ from travel_agent.app.config import get_settings
 from travel_agent.app.schemas.providers import AccommodationOption, FlightOption
 
 
+def estimate_daily_costs(
+    destination: str, *, travel_style: str | None, currency: str
+) -> tuple[int, int] | None:
+    """목적지·스타일에 맞는 1인 1일 (식비, 현지교통) 추정. 비활성/실패 시 None.
+
+    고정 6만/1.5만원은 유럽엔 너무 적고 동남아엔 너무 많다. 도시 물가를 LLM이 추정한다.
+    """
+    settings = get_settings()
+    if not settings.enable_live_llm or not codex_brief_available(settings.codex_cli_command):
+        return None
+    style = travel_style or "보통"
+    prompt = (
+        f"'{destination}' 여행의 1인 1일 현지 경비를 {currency} 기준으로 추정하라. "
+        f"여행 스타일은 '{style}'. 식비(세 끼+간식)와 현지교통(대중교통·근거리)만. "
+        "항공·숙박·입장료는 제외. 그 도시 물가에 맞게 현실적으로.\n"
+        '출력은 설명·코드펜스 없이 JSON 하나만: {"food": 정수, "local_transport": 정수}'
+    )
+    data = run_codex_json(
+        prompt,
+        command=settings.codex_cli_command,
+        model=settings.codex_oauth_model,
+        reasoning_effort=settings.codex_reasoning_effort,
+        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 60),
+    )
+    if not isinstance(data, dict):
+        return None
+    try:
+        food = int(data["food"])
+        transport = int(data["local_transport"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if food <= 0 or transport <= 0:
+        return None
+    return food, transport
+
+
 def _advise(items: list[tuple[str, str]], *, kind_label: str, context: str) -> dict[str, str]:
     """[(id, 설명)] → {id: 한 줄 평}. 비활성/실패 시 빈 dict."""
     if not items:
