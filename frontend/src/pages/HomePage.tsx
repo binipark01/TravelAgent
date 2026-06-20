@@ -1,7 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { addAgentRunMessage, createAgentRun, getAgentRun, updateItinerary } from '../api/agent'
+import {
+  addAgentRunMessage,
+  createAgentRun,
+  getAgentRun,
+  listAgentRuns,
+  updateItinerary,
+} from '../api/agent'
 import type { Itinerary } from '../types/itinerary'
 import { AgentCommandBox } from '../components/AgentCommandBox'
 import { ErrorState } from '../components/ErrorState'
@@ -43,6 +49,13 @@ interface ChatTurn {
 function nextTurnId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `turn_${Date.now()}_${Math.round(Math.random() * 1e6)}`
+}
+
+/** '이전 요청' 목록의 날짜 라벨(예: 6/21). date_range가 없을 때 created_at으로 대체. */
+function formatRunDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
 }
 
 /** 캔버스에 렌더할 실제(non-mock) 카드가 하나라도 있는지. PlanCards의 표시 조건과 맞춘다. */
@@ -143,6 +156,13 @@ export function HomePage() {
     gcTime: 0,
   })
 
+  // 좌측 사이드바: 지난 요청 기록(클릭하면 그 계획을 이어서 본다).
+  const runsQuery = useQuery({
+    queryKey: ['agentRunsList'],
+    queryFn: () => listAgentRuns(20),
+    staleTime: 30_000,
+  })
+
   useEffect(() => {
     const detail = pollQuery.data
     if (!detail || !activeTurnId) return
@@ -153,8 +173,10 @@ export function HomePage() {
     if (isTerminalStatus(detail.run.status)) {
       setPollingRunId(null)
       setActiveTurnId(null)
+      // 방금 끝난 요청이 '이전 요청' 목록에 바로 보이도록 새로고침.
+      void runsQuery.refetch()
     }
-  }, [pollQuery.data, activeTurnId])
+  }, [pollQuery.data, activeTurnId, runsQuery])
 
   // 마운트 시: '최근 여행'에서 온 ?run=<id>이 있으면 그걸, 없으면 저장된 활성 run을
   // 서버에서 불러와 대화·캔버스를 복원하고 이어서 대화할 수 있게 한다.
@@ -280,6 +302,35 @@ export function HomePage() {
               )
             })}
           </ul>
+        </section>
+        <section className="side-section side-section--history">
+          <h2>이전 요청</h2>
+          {runsQuery.isLoading ? (
+            <p className="empty-panel-text">불러오는 중…</p>
+          ) : runsQuery.data && runsQuery.data.length > 0 ? (
+            <ul className="history-list">
+              {runsQuery.data.map((run) => {
+                const title = run.destination?.trim() || run.message.trim()
+                const sub = run.date_range || formatRunDate(run.created_at)
+                const isActive = run.run_id === runId
+                return (
+                  <li key={run.run_id}>
+                    <button
+                      type="button"
+                      className={`history-item${isActive ? ' history-item--active' : ''}`}
+                      onClick={() => window.location.assign(`/?run=${run.run_id}`)}
+                      title={run.message}
+                    >
+                      <span className="history-title">{title}</span>
+                      {sub && <span className="history-sub">{sub}</span>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="empty-panel-text">아직 지난 요청이 없습니다.</p>
+          )}
         </section>
       </aside>
 

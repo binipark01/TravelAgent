@@ -256,6 +256,49 @@ a {
   width: 12px;
 }
 
+/* 이전 요청 기록 — 선택 가능한 목록 */
+.history-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.history-item {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 2px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.history-item:hover {
+  background: var(--primary-soft, rgba(15, 118, 110, 0.08));
+  border-color: var(--primary, #0f766e);
+}
+.history-item--active {
+  border-color: var(--primary, #0f766e);
+  background: var(--primary-soft, rgba(15, 118, 110, 0.1));
+}
+.history-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .agent-chat-panel,
 .chat-dock {
   background: var(--surface);
