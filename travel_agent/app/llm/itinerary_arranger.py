@@ -64,6 +64,17 @@ def _coerce_int(value: object, default: int, *, low: int, high: int) -> int:
     return max(low, min(result, high))
 
 
+def _weather_block(weather_by_day: dict[int, str] | None) -> str:
+    if not weather_by_day:
+        return ""
+    lines = "\n".join(f"  - {day}일차: {label}" for day, label in sorted(weather_by_day.items()))
+    return (
+        "\n날짜별 날씨 예보(아래)를 반영하라. 비/눈/흐림 예보인 날엔 실내 위주(미술관·박물관·"
+        "수족관·쇼핑몰·온천), 맑은 날엔 야외 위주(공원·전망대·해변·산책)로 배치하라.\n"
+        f"{lines}\n"
+    )
+
+
 def arrange_itinerary(
     destination: str,
     *,
@@ -72,6 +83,7 @@ def arrange_itinerary(
     restaurants: list[POIOption],
     pace: str | None,
     start_date: date | None,
+    weather_by_day: dict[int, str] | None = None,
 ) -> ArrangedItinerary | None:
     """관광지·식당을 날짜별 동선으로 배치한다. 비활성/실패 시 None."""
     if not _enabled() or days_count < 1 or not attractions:
@@ -90,7 +102,8 @@ def arrange_itinerary(
         "되돌아가지 않는 순서로 배치하라. 연속 방문지 사이의 대략 이동시간(분)과 교통수단을 "
         "추정하고, 점심·저녁 식당은 그날 동선 근처로 고른다. "
         f"페이스는 {pace_hint}.{season} "
-        "목록에 없는 장소는 쓰지 마라. 가까운 area끼리 같은 날에 모은다.\n\n"
+        "목록에 없는 장소는 쓰지 마라. 가까운 area끼리 같은 날에 모은다.\n"
+        f"{_weather_block(weather_by_day)}\n"
         f"[관광지]\n{_pool_block(attractions, 14)}\n\n"
         f"[식당]\n{_pool_block(restaurants, 12)}\n\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"

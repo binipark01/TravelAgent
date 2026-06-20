@@ -35,8 +35,11 @@ export function TransportOptionsCard({ options }: { options: FlightOption[] }) {
       ) : (
         <div className="flight-list">
           {options.map((option, index) => {
+            const advice = option.notes.find((note) => note.startsWith('💬'))
             const chips = option.notes
-              .filter((note) => !NOISE.test(note) && !isDisclaimer(note))
+              .filter(
+                (note) => !NOISE.test(note) && !isDisclaimer(note) && !note.startsWith('💬'),
+              )
               .map((note) => formatChip(cleanDisplayText(note)))
             const disclaimer = option.notes.find(isDisclaimer)
             return (
@@ -66,6 +69,7 @@ export function TransportOptionsCard({ options }: { options: FlightOption[] }) {
                     </span>
                   )}
                 </p>
+                {advice && <p className="opt-advice">{cleanDisplayText(advice)}</p>}
                 {chips.length > 0 && (
                   <div className="flight-chips">
                     {chips.map((chip) => (

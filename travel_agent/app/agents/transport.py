@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from travel_agent.app.agents.flight_live_search import extract_live_flight_options
+from travel_agent.app.llm.advisor import advise_flights
 from travel_agent.app.providers.base import FlightProvider
 from travel_agent.app.schemas.providers import FlightSearchRequest
 from travel_agent.app.schemas.trip import TripPlanState
@@ -33,6 +34,14 @@ class FlightAgent:
                 currency=state.currency,
                 timeout_seconds=self.live_timeout,
                 request_text=state.raw_user_message,
+            )
+            # LLM이 각 항공 후보에 가성비·장단점 한 줄 평을 단다(비활성 시 no-op).
+            advise_flights(
+                state.transport_options,
+                context=(
+                    f"{brief.origin}→{state.selected_destination}, "
+                    f"{brief.travelers or 1}명"
+                ),
             )
             return state
 

@@ -47,8 +47,12 @@ class RouteAgent:
         attractions = self._apply_edits(state.activity_options or state.poi_candidates, brief)
         restaurants = self._apply_edits(state.poi_candidates, brief)
 
-        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간 포함) 그걸 쓰고, 비활성/실패 시
-        # 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
+        # 날씨를 먼저 받아 배치에 반영하고(비→실내, 맑음→야외) 표시에도 재사용한다.
+        weather = self._fetch_weather(state, brief, days_count)
+        weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
+
+        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨 포함) 그걸 쓰고, 비활성/실패
+        # 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
         arrangement = arrange_itinerary(
             state.selected_destination or "여행지",
             days_count=days_count,
@@ -56,6 +60,7 @@ class RouteAgent:
             restaurants=restaurants,
             pace=brief.pace,
             start_date=brief.start_date,
+            weather_by_day=weather_by_day,
         )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
@@ -80,7 +85,7 @@ class RouteAgent:
                     "(국제선 체크인·보안검색 여유)."
                 )
 
-        self._attach_weather(itinerary, state, brief, days_count)
+        self._apply_weather(itinerary, weather)
         state.draft_itinerary = itinerary
         state.optimized_itinerary = itinerary
         return state
@@ -276,15 +281,33 @@ class RouteAgent:
             feasibility_flags=[],
         )
 
-    def _attach_weather(self, itinerary, state, brief, days_count: int) -> None:
-        """여행 날짜별 날씨를 일정 각 날짜에 붙인다(실패해도 일정은 그대로)."""
+    def _fetch_weather(self, state, brief, days_count: int) -> dict[date, str]:
+        """여행 날짜별 날씨를 한 번 받아 dict로 돌려준다(실패하면 빈 dict)."""
         if not state.selected_destination or not brief.start_date:
-            return
+            return {}
         end = brief.end_date or (brief.start_date + timedelta(days=days_count - 1))
         try:
-            weather = fetch_trip_weather(state.selected_destination, brief.start_date, end)
+            return fetch_trip_weather(state.selected_destination, brief.start_date, end)
         except (OSError, ValueError):
-            return
+            return {}
+
+    @staticmethod
+    def _weather_by_day(
+        start_date: date | None, days_count: int, weather: dict[date, str]
+    ) -> dict[int, str]:
+        """날짜별 날씨를 '일차 번호 → 라벨'로 바꿔 배치기에 넘긴다."""
+        if not start_date or not weather:
+            return {}
+        result: dict[int, str] = {}
+        for day_number in range(1, days_count + 1):
+            day_date = start_date + timedelta(days=day_number - 1)
+            if day_date in weather:
+                result[day_number] = weather[day_date]
+        return result
+
+    @staticmethod
+    def _apply_weather(itinerary, weather: dict[date, str]) -> None:
+        """여행 날짜별 날씨를 일정 각 날짜에 붙인다(표시용)."""
         for day in itinerary.days:
             if day.date and day.date in weather:
                 day.weather = weather[day.date]

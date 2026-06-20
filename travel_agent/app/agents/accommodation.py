@@ -5,6 +5,7 @@ from datetime import timedelta
 from travel_agent.app.connectors.accommodations.naver_hotel_browser import (
     extract_live_accommodation_options,
 )
+from travel_agent.app.llm.advisor import advise_hotels
 from travel_agent.app.schemas.brief import TripBrief
 from travel_agent.app.schemas.providers import AccommodationSearchRequest
 from travel_agent.app.schemas.trip import TripPlanState
@@ -73,6 +74,11 @@ class AccommodationAgent:
                 request_text=state.raw_user_message,
                 checkin=checkin,
                 checkout=checkout,
+            )
+            # LLM이 각 숙소 후보에 가성비·위치·장단점 한 줄 평을 단다(비활성 시 no-op).
+            advise_hotels(
+                state.accommodation_options,
+                context=f"{state.selected_destination}, {brief.travelers or 1}명, {nights}박",
             )
             return state
 

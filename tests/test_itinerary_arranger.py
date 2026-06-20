@@ -146,6 +146,37 @@ def test_route_agent_falls_back_to_heuristic_when_no_arrangement(
     assert all(len(day.transfers) == 0 for day in itinerary.days)
 
 
+def test_route_agent_passes_weather_to_arranger(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import date as date_cls
+
+    state = _state()
+    state.activity_options = [_poi("미술관", "중심"), _poi("공원", "강변")]
+    state.poi_candidates = [_poi("식당", "중심")]
+
+    # 날씨를 알려진 값으로 고정(1일차 비, 2일차 맑음).
+    weather = {
+        date_cls(2026, 7, 3): "🌧 비 24°/18°",
+        date_cls(2026, 7, 4): "☀️ 맑음 28°/19°",
+    }
+    monkeypatch.setattr(route_optimizer, "fetch_trip_weather", lambda *a, **k: weather)
+
+    captured: dict = {}
+
+    def fake_arrange(*args, **kwargs):  # noqa: ANN002, ANN003
+        captured.update(kwargs)
+        return None  # 폴백 경로 사용(배치 결과는 이 테스트의 관심사가 아님)
+
+    monkeypatch.setattr(route_optimizer, "arrange_itinerary", fake_arrange)
+
+    RouteAgent(build_mock_provider_bundle().routes).run(state)
+    # 배치기에 '일차 번호 → 날씨'가 전달된다.
+    assert captured["weather_by_day"][1].startswith("🌧")
+    assert captured["weather_by_day"][2].startswith("☀️")
+    # 날씨가 일정 표시에도 붙는다.
+    day1 = state.optimized_itinerary.days[0]
+    assert day1.weather and day1.weather.startswith("🌧")
+
+
 def test_arranger_parses_and_caps_llm_output(monkeypatch: pytest.MonkeyPatch) -> None:
     # LLM 활성 + run_codex_json을 가짜로 대체해 파싱·보정 로직만 검증한다.
     monkeypatch.setattr(itinerary_arranger, "_enabled", lambda: True)

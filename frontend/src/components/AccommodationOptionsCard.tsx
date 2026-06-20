@@ -21,7 +21,10 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
         <>
           <div className="hotel-list">
             {options.map((option) => {
-              const tagNote = option.notes.find((note) => TAG_MARK.test(note))
+              const advice = option.notes.find((note) => note.startsWith('💬'))
+              const tagNote = option.notes.find(
+                (note) => TAG_MARK.test(note) && !note.startsWith('💬'),
+              )
               const chips = tagNote
                 ? tagNote.split('·').map((part) => part.trim()).filter(Boolean)
                 : []
@@ -49,6 +52,7 @@ export function AccommodationOptionsCard({ options }: { options: AccommodationOp
                       <span>리뷰 {option.review_count.toLocaleString('ko-KR')}</span>
                     ) : null}
                   </div>
+                  {advice && <p className="opt-advice">{cleanDisplayText(advice)}</p>}
                   {option.amenities && option.amenities.length > 0 && (
                     <div className="amenity-chips">
                       {option.amenities.slice(0, 4).map((amenity) => (

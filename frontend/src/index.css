@@ -2527,6 +2527,13 @@ legend {
   color: inherit;
   font-weight: 700;
 }
+/* 항공·숙소 LLM 한 줄 평 */
+.opt-advice {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text, #1f2937);
+}
 .flight-chips {
   display: flex;
   flex-wrap: wrap;
