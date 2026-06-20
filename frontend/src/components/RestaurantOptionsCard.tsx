@@ -53,6 +53,17 @@ export function RestaurantOptionsCard({ options, eyebrow = '맛집', title = '�
                           리뷰 {option.review_count.toLocaleString('ko-KR')}
                         </span>
                       ) : null}
+                      {option.booking_required && <span className="poi-book-badge">예약 필요</span>}
+                      {option.booking_url && (
+                        <a
+                          href={option.booking_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="poi-book-link"
+                        >
+                          예매 ↗
+                        </a>
+                      )}
                       {url && (
                         <a href={url} target="_blank" rel="noopener noreferrer">
                           {curated ? '출처 ↗' : '지도 ↗'}

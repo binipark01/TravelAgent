@@ -85,6 +85,7 @@ class POIOption(StrictBaseModel):
     opening_hours: str | None = None
     recommended_duration_minutes: int = 90
     booking_required: bool = False
+    booking_url: str | None = None  # 사전 예매(시간지정 입장권 등) 딥링크
     metadata: ProviderMetadata
     notes: list[str] = Field(default_factory=list)
 

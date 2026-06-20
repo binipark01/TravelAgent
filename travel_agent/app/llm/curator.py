@@ -149,6 +149,11 @@ def _poi_from_item(
         duration = 90
     duration = max(30, min(duration, 240))
 
+    booking_required = bool(item.get("booking_required"))
+    booking_url = _clean_str(item.get("booking_url"))
+    if booking_required and booking_url:
+        notes.insert(0, "🎟 사전 예매 권장")
+
     return POIOption(
         poi_id=new_id("poi"),
         title=name,
@@ -160,7 +165,8 @@ def _poi_from_item(
         review_count=None,
         opening_hours=None,
         recommended_duration_minutes=duration,
-        booking_required=False,
+        booking_required=booking_required,
+        booking_url=booking_url,
         metadata=_llm_metadata(primary_source),
         notes=notes,
     )
@@ -211,11 +217,15 @@ def curate_city_pois(
         "근거 출처 URL을 최소 1개 붙여라(지어내지 마라).\n"
         f"[관광지 후보] {_pool_names(attraction_pool)}\n"
         f"[맛집 후보] {_pool_names(restaurant_pool)}\n\n"
+        "루브르·에펠탑·바티칸처럼 시간지정 입장권·사전 예매가 사실상 필수인 곳은 "
+        '"booking_required":true와 함께 예매 링크("booking_url")를 위 권위 액티비티 '
+        "플랫폼(Klook·GetYourGuide 등)이나 공식 예매 페이지로 달아라. 예매가 필요 없으면 "
+        "booking_required는 false.\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
         "{\n"
         '  "attractions": [{"name":"", "type":"전망대/사원/거리 등", "area":"동네/지역", '
         '"why":"왜 추천하는지 1~2문장(현지평·시즌 등)", "duration_min":90, "rating":4.5, '
-        '"sources":["url"]}],\n'
+        '"booking_required":false, "booking_url":null, "sources":["url"]}],\n'
         '  "restaurants": [{"name":"", "cuisine":"스시/라멘/이자카야 등", "area":"", '
         '"why":"", "rating":4.4, "sources":["url"]}]\n'
         "}\n"

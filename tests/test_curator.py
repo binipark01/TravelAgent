@@ -19,6 +19,8 @@ _FAKE_CITY = {
             "why": "후지산·스루가만을 한 번에 보는 무료 전망지",
             "duration_min": 90,
             "rating": 4.3,
+            "booking_required": True,
+            "booking_url": "https://www.klook.com/ko/booking",
             "sources": ["https://nihondaira-yume-terrace.jp/"],
         }
     ],
@@ -100,6 +102,12 @@ def test_curate_city_pois_builds_pois_with_why_and_sources(
     # '왜 추천' + 출처가 notes에 실린다.
     assert any(note.startswith("💡") for note in attraction.notes)
     assert any("출처" in note for note in attraction.notes)
+    # 예약 필요 + 예매 링크가 파싱된다.
+    assert attraction.booking_required is True
+    assert attraction.booking_url == "https://www.klook.com/ko/booking"
+    assert any("예매" in note for note in attraction.notes)
+    # 식당은 예약 필드 기본값(False/None).
+    assert result.restaurants[0].booking_required is False
 
     # 식당이 한 종류가 아니라 다양하게 들어온다(함박·마구로).
     cuisines = {r.type for r in result.restaurants}

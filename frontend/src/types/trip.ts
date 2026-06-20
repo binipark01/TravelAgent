@@ -71,6 +71,7 @@ export interface POIOption {
   opening_hours?: string | null
   recommended_duration_minutes: number
   booking_required: boolean
+  booking_url?: string | null
   metadata: ProviderMetadata
   notes: string[]
 }
