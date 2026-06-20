@@ -1,7 +1,10 @@
 import type { NearbyGuide } from '../types/trip'
+import { cleanDisplayText } from '../utils/format'
+import { placeTriggerProps, useMapFocus } from './MapFocusContext'
 
 /** 근교 당일치기 카드: 허브에서 닿는 근교 명소를 이동시간·교통·하이라이트로 정리. */
 export function NearbyCard({ guide }: { guide?: NearbyGuide | null }) {
+  const focus = useMapFocus()
   if (!guide || guide.destinations.length === 0) return null
   return (
     <section className="card nearby-card">
@@ -15,11 +18,16 @@ export function NearbyCard({ guide }: { guide?: NearbyGuide | null }) {
       <p className="visa-summary">{guide.summary}</p>
 
       <ul className="nearby-list">
-        {guide.destinations.map((dest) => (
+        {guide.destinations.map((dest) => {
+          // 근교는 허브 도시 밖이라, 허브를 지역 맥락으로 줘서 지도에 그 명소를 띄운다.
+          const trig = placeTriggerProps(focus, { label: dest.name, area: guide.hub })
+          return (
           <li key={dest.name} className="nearby-item">
             <div className="nearby-item__head">
-              <strong>{dest.name}</strong>
-              <span className="nearby-time">🚆 {dest.travel_time}</span>
+              <strong className={trig.className} {...trig.interactive}>
+                {cleanDisplayText(dest.name)}
+              </strong>
+              <span className="nearby-time">🚆 {cleanDisplayText(dest.travel_time)}</span>
             </div>
             <div className="nearby-item__meta">
               <span className="nearby-transport">{dest.transport}</span>
@@ -35,7 +43,8 @@ export function NearbyCard({ guide }: { guide?: NearbyGuide | null }) {
               </div>
             )}
           </li>
-        ))}
+          )
+        })}
       </ul>
 
       <p className="visa-disclaimer">
