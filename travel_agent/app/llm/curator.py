@@ -24,6 +24,8 @@ from travel_agent.app.schemas.providers import (
     NearbyGuide,
     POIOption,
     ProviderMetadata,
+    StayArea,
+    StayAreaGuide,
 )
 from travel_agent.app.utils.ids import new_id
 from travel_agent.app.utils.time import expires_in, utc_now
@@ -38,12 +40,14 @@ class CuratedPois:
 # 같은 (목적지·관심사·kind)는 한 번만 웹검색한다(웹검색이 비싸서).
 _CITY_CACHE: dict[str, CuratedPois] = {}
 _NEARBY_CACHE: dict[str, NearbyGuide] = {}
+_STAY_CACHE: dict[str, StayAreaGuide] = {}
 
 
 def clear_cache() -> None:
     """테스트용: 큐레이션 캐시를 비운다."""
     _CITY_CACHE.clear()
     _NEARBY_CACHE.clear()
+    _STAY_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -99,6 +103,10 @@ def _clean_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(v).strip() for v in value if isinstance(v, str) and v.strip()]
+
+
+def _clean_str(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _coerce_rating(value: object) -> float | None:
@@ -293,4 +301,67 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
         metadata=_llm_metadata(destinations[0].source_url or _maps_url(hub, destination)),
     )
     _NEARBY_CACHE[cache_key] = guide
+    return guide
+
+
+def curate_stay_areas(destination: str) -> StayAreaGuide | None:
+    """'어느 동네에 묵을지'를 웹검색으로 종합 추천한다. 비활성/실패 시 None."""
+    settings = get_settings()
+    if not _enabled(settings):
+        return None
+    cache_key = destination.strip().lower()
+    if cache_key in _STAY_CACHE:
+        return _STAY_CACHE[cache_key]
+
+    prompt = (
+        "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 네이버 블로그·카페, "
+        "여행 커뮤니티, 호텔 예약 가이드를 검색해 "
+        f"'{destination}'에서 **숙소를 어느 동네/구역에 잡으면 좋은지**를 종합 추천하라.\n"
+        f"{source_hints_block(destination)}\n"
+        "각 구역의 분위기, 어떤 여행자/목적에 맞는지, 치안·가격대·교통 접근성 팁을 적고 "
+        "근거 출처 URL을 최소 1개 붙여라. 실제 존재하는 구역만, 지어내지 마라.\n\n"
+        "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
+        "{\n"
+        f'  "destination": "{destination}",\n'
+        '  "summary": "이 도시 숙소 구역 선택 한두 문장 요약",\n'
+        '  "areas": [{"name":"르마레(Le Marais)", "vibe":"감성 카페·편집숍 골목", '
+        '"good_for":["미술관 도보","야경·디너"], "note":"치안·가격·교통 팁", '
+        '"source_url":"url"}]\n'
+        "}\n"
+        "구역 3~5곳."
+    )
+    data = _run(prompt, settings)
+    if not isinstance(data, dict):
+        return None
+    raw_areas = data.get("areas")
+    if not isinstance(raw_areas, list) or not raw_areas:
+        return None
+    areas: list[StayArea] = []
+    for raw in raw_areas:
+        if not isinstance(raw, dict):
+            continue
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        areas.append(
+            StayArea(
+                name=name.strip(),
+                vibe=(raw.get("vibe") or "").strip(),
+                good_for=_clean_list(raw.get("good_for")),
+                note=_clean_str(raw.get("note")),
+                source_url=_clean_str(raw.get("source_url")),
+            )
+        )
+    if not areas:
+        return None
+    summary = (data.get("summary") or f"{destination} 추천 숙박 구역").strip()
+    first_source = next((a.source_url for a in areas if a.source_url), None)
+    guide = StayAreaGuide(
+        destination=destination,
+        summary=summary,
+        areas=areas,
+        source_url=first_source,
+        metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
+    )
+    _STAY_CACHE[cache_key] = guide
     return guide

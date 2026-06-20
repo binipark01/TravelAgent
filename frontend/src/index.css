@@ -2224,6 +2224,53 @@ legend {
   color: var(--accent, #2563eb);
 }
 
+/* 숙박 구역(어디에 묵을까) — nearby와 같은 톤 */
+.stay-area-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.stay-area-item {
+  padding: 10px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.stay-area-item__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stay-area-item__head strong {
+  font-size: 15px;
+}
+.stay-area-item__head a {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.stay-area-vibe {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.stay-area-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.stay-area-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 /* 빈 상태 — 가운데 공백을 환영 문구 + 예시 프롬프트로 채운다 */
 .chat-empty {
   display: flex;

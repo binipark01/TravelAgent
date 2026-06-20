@@ -104,6 +104,7 @@ export interface TripPlanState {
   fx_info?: FxInfo | null
   safety_info?: SafetyInfo | null
   nearby_guide?: NearbyGuide | null
+  stay_area_guide?: StayAreaGuide | null
   transport_tickets?: TransportTicketGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
@@ -178,6 +179,21 @@ export interface NearbyGuide {
   hub: string
   summary: string
   destinations: NearbyDestination[]
+  source_url?: string | null
+}
+
+export interface StayArea {
+  name: string
+  vibe: string
+  good_for: string[]
+  note?: string | null
+  source_url?: string | null
+}
+
+export interface StayAreaGuide {
+  destination: string
+  summary: string
+  areas: StayArea[]
   source_url?: string | null
 }
 

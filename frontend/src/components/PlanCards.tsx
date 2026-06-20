@@ -17,6 +17,7 @@ import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
 import { MapCard } from './MapCard'
 import { NearbyCard } from './NearbyCard'
+import { StayAreaCard } from './StayAreaCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
 import { RestaurantOptionsCard } from './RestaurantOptionsCard'
 import { SafetyCard } from './SafetyCard'
@@ -47,6 +48,7 @@ export function PlanCards({
   const fx = plan.fx_info ?? null
   const safety = plan.safety_info ?? null
   const nearby = plan.nearby_guide ?? null
+  const stayAreas = plan.stay_area_guide ?? null
   const tickets = plan.transport_tickets ?? null
 
   // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
@@ -141,6 +143,7 @@ export function PlanCards({
       )}
       {flights.length > 0 && <TransportOptionsCard options={flights} />}
       {hotels.length > 0 && <AccommodationOptionsCard options={hotels} />}
+      {stayAreas != null && <StayAreaCard guide={stayAreas} />}
       {activities.length > 0 && (
         <RestaurantOptionsCard options={activities} eyebrow="관광" title="관광지 후보" />
       )}

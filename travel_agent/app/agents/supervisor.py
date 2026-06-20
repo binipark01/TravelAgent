@@ -20,6 +20,7 @@ from travel_agent.app.agents.poi import RestaurantAgent
 from travel_agent.app.agents.presentation import PresentationAgent
 from travel_agent.app.agents.route_optimizer import RouteAgent
 from travel_agent.app.agents.safety import SafetyAgent
+from travel_agent.app.agents.stay_area import StayAreaAgent
 from travel_agent.app.agents.transport import FlightAgent
 from travel_agent.app.agents.transport_tickets import TransportTicketsAgent
 from travel_agent.app.agents.user_profile import UserProfileAgent
@@ -80,6 +81,7 @@ class TravelSupervisorAgent:
         self.fx_agent = FxAgent()
         self.safety_agent = SafetyAgent()
         self.nearby_agent = NearbyAgent()
+        self.stay_area_agent = StayAreaAgent()
         self.transport_tickets_agent = TransportTicketsAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
@@ -160,6 +162,7 @@ class TravelSupervisorAgent:
         state.fx_info = None
         state.safety_info = None
         state.nearby_guide = None
+        state.stay_area_guide = None
         state.transport_tickets = None
         # 재검색 판정용 도메인 서명 캐시도 비워 확실히 다시 검색하게 한다.
         for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
@@ -349,6 +352,18 @@ class TravelSupervisorAgent:
                     f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
                     if state.nearby_guide
                     else "근교 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "StayAreaAgent",
+                "추천 숙박 구역 정리",
+                lambda: self.stay_area_agent.run(state),
+                lambda: (
+                    f"{state.stay_area_guide.destination} 숙박 구역 "
+                    f"{len(state.stay_area_guide.areas)}곳"
+                    if state.stay_area_guide
+                    else "숙박 구역 데이터 없음"
                 ),
             )
             self._recorded_step(

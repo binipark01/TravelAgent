@@ -180,6 +180,24 @@ class NearbyGuide(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class StayArea(StrictBaseModel):
+    name: str  # 예: 르마레(Le Marais)
+    vibe: str  # 한줄 분위기(예: 감성 카페·편집숍이 많은 트렌디 골목)
+    good_for: list[str] = Field(default_factory=list)  # 예: ["미술관 도보", "야경·디너"]
+    note: str | None = None  # 치안·가격대·교통 팁
+    source_url: str | None = None
+
+
+class StayAreaGuide(StrictBaseModel):
+    """목적지에서 '어느 동네에 묵을지' 안내(추천 숙박 구역)."""
+
+    destination: str
+    summary: str
+    areas: list[StayArea] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class BookingPlatform(StrictBaseModel):
     name: str  # 예: 12Go Asia
     url: str  # 딥링크(검색/랜딩)

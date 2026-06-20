@@ -106,6 +106,48 @@ def test_curate_city_pois_builds_pois_with_why_and_sources(
     assert cuisines == {"함박스테이크", "마구로덮밥"}
 
 
+_FAKE_STAY = {
+    "destination": "파리",
+    "summary": "처음이면 1~7구 중심, 감성은 르마레",
+    "areas": [
+        {
+            "name": "르마레(Le Marais)",
+            "vibe": "감성 카페·편집숍 골목",
+            "good_for": ["미술관 도보", "야경·디너"],
+            "note": "치안 양호, 주말 혼잡",
+            "source_url": "https://www.myrealtrip.com/",
+        },
+        {
+            "name": "생제르맹데프레",
+            "vibe": "고전적·차분한 좌안",
+            "good_for": ["루브르·오르세 도보"],
+            "note": None,
+            "source_url": "https://www.myrealtrip.com/2",
+        },
+    ],
+}
+
+
+def test_curate_stay_areas_disabled_returns_none() -> None:
+    assert curator.curate_stay_areas("파리") is None
+
+
+def test_curate_stay_areas_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: _FAKE_STAY)
+
+    guide = curator.curate_stay_areas("파리")
+    assert guide is not None
+    assert guide.destination == "파리"
+    assert len(guide.areas) == 2
+    first = guide.areas[0]
+    assert first.name == "르마레(Le Marais)"
+    assert "미술관 도보" in first.good_for
+    assert first.note == "치안 양호, 주말 혼잡"
+    assert first.source_url == "https://www.myrealtrip.com/"
+    assert guide.metadata.source_ref.provider == "llm_curation"
+
+
 def test_curate_nearby_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curator, "_enabled", lambda settings: True)
     monkeypatch.setattr(curator, "_run", lambda prompt, settings: _FAKE_NEARBY)

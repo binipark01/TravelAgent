@@ -30,6 +30,7 @@ class PresentationAgent:
             fx_info=state.fx_info,
             safety_info=state.safety_info,
             nearby_guide=state.nearby_guide,
+            stay_area_guide=state.stay_area_guide,
             transport_tickets=state.transport_tickets,
             risk_findings=state.risk_findings,
             critic_findings=state.critic_findings,
