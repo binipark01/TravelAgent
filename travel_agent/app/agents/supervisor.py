@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from travel_agent.app.agents.accommodation import AccommodationAgent
 from travel_agent.app.agents.budget import BudgetAgent
+from travel_agent.app.agents.checklist import ChecklistAgent
 from travel_agent.app.agents.core_planner import CorePlannerAgent
 from travel_agent.app.agents.critic import PlanCriticAgent
 from travel_agent.app.agents.destination import DestinationDiscoveryAgent
@@ -82,6 +83,7 @@ class TravelSupervisorAgent:
         self.safety_agent = SafetyAgent()
         self.nearby_agent = NearbyAgent()
         self.stay_area_agent = StayAreaAgent()
+        self.checklist_agent = ChecklistAgent()
         self.transport_tickets_agent = TransportTicketsAgent()
         self.budget_agent = BudgetAgent()
         self.critic_agent = PlanCriticAgent()
@@ -163,6 +165,7 @@ class TravelSupervisorAgent:
         state.safety_info = None
         state.nearby_guide = None
         state.stay_area_guide = None
+        state.prep_checklist = None
         state.transport_tickets = None
         # 재검색 판정용 도메인 서명 캐시도 비워 확실히 다시 검색하게 한다.
         for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
@@ -364,6 +367,18 @@ class TravelSupervisorAgent:
                     f"{len(state.stay_area_guide.areas)}곳"
                     if state.stay_area_guide
                     else "숙박 구역 데이터 없음"
+                ),
+            )
+            self._recorded_step(
+                recorder,
+                "ChecklistAgent",
+                "출발 전 준비물 정리",
+                lambda: self.checklist_agent.run(state),
+                lambda: (
+                    f"{state.prep_checklist.destination} 준비물 "
+                    f"{len(state.prep_checklist.groups)}개 그룹"
+                    if state.prep_checklist
+                    else "준비물 데이터 없음"
                 ),
             )
             self._recorded_step(

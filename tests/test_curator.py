@@ -148,6 +148,33 @@ def test_curate_stay_areas_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None
     assert guide.metadata.source_ref.provider == "llm_curation"
 
 
+_FAKE_CHECKLIST = {
+    "destination": "파리",
+    "summary": "8월 파리는 더우니 가벼운 옷, 무비자라 여권만",
+    "groups": [
+        {"title": "전자·전압", "items": ["C/E타입 어댑터(230V)", "보조배터리"]},
+        {"title": "서류", "items": ["여권(잔여 3개월+)", "유럽 무비자 90일"]},
+    ],
+}
+
+
+def test_curate_checklist_disabled_returns_none() -> None:
+    assert curator.curate_checklist("파리", context="파리, 8월") is None
+
+
+def test_curate_checklist_builds_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "run_codex_json", lambda *a, **k: _FAKE_CHECKLIST)
+
+    checklist = curator.curate_checklist("파리", context="파리, 8월, 무비자")
+    assert checklist is not None
+    assert checklist.destination == "파리"
+    assert len(checklist.groups) == 2
+    assert checklist.groups[0].title == "전자·전압"
+    assert "보조배터리" in checklist.groups[0].items
+    assert checklist.metadata.source_ref.provider == "llm_curation"
+
+
 def test_curate_nearby_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curator, "_enabled", lambda settings: True)
     monkeypatch.setattr(curator, "_run", lambda prompt, settings: _FAKE_NEARBY)

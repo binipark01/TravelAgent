@@ -2271,6 +2271,33 @@ legend {
   line-height: 1.5;
 }
 
+/* 준비물 체크리스트 — 카테고리 그리드 */
+.checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.checklist-group {
+  padding: 10px 12px;
+  background: var(--surface-muted, rgba(148, 163, 184, 0.08));
+  border-radius: 10px;
+}
+.checklist-group h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.checklist-group ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 3px;
+}
+.checklist-group li {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 /* 빈 상태 — 가운데 공백을 환영 문구 + 예시 프롬프트로 채운다 */
 .chat-empty {
   display: flex;

@@ -23,6 +23,8 @@ from travel_agent.app.schemas.providers import (
     NearbyDestination,
     NearbyGuide,
     POIOption,
+    PrepChecklist,
+    PrepGroup,
     ProviderMetadata,
     StayArea,
     StayAreaGuide,
@@ -41,6 +43,7 @@ class CuratedPois:
 _CITY_CACHE: dict[str, CuratedPois] = {}
 _NEARBY_CACHE: dict[str, NearbyGuide] = {}
 _STAY_CACHE: dict[str, StayAreaGuide] = {}
+_CHECK_CACHE: dict[str, PrepChecklist] = {}
 
 
 def clear_cache() -> None:
@@ -48,6 +51,7 @@ def clear_cache() -> None:
     _CITY_CACHE.clear()
     _NEARBY_CACHE.clear()
     _STAY_CACHE.clear()
+    _CHECK_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -365,3 +369,63 @@ def curate_stay_areas(destination: str) -> StayAreaGuide | None:
     )
     _STAY_CACHE[cache_key] = guide
     return guide
+
+
+def curate_checklist(destination: str, *, context: str) -> PrepChecklist | None:
+    """출발 전 준비물·할 일 체크리스트를 LLM이 정리한다. 비활성/실패 시 None.
+
+    전압/플러그·유심·환전 등은 안정적 지식이라 웹검색 없이 추론한다(빠름). 비자·날씨 같은
+    여행별 사실은 호출부가 context로 넘긴다.
+    """
+    settings = get_settings()
+    if not _enabled(settings):
+        return None
+    cache_key = f"{destination.strip().lower()}|{context}"
+    if cache_key in _CHECK_CACHE:
+        return _CHECK_CACHE[cache_key]
+
+    prompt = (
+        "너는 한국인 여행자를 위한 출발 전 준비물·체크리스트 도우미다. 아래 여행에 맞춰 "
+        "준비물·할 일을 카테고리별로 정리하라. 전압/플러그 타입, 유심/이심, 환전·카드, "
+        "날씨에 맞는 옷차림, 비자·서류, 상비약, 현지 앱·교통카드 등을 목적지·계절에 맞게 "
+        "구체적으로. 일반론만 늘어놓지 말고 이 목적지 특성을 반영하라.\n"
+        f"여행 정보: {context}\n\n"
+        "출력은 설명·코드펜스 없이 JSON 하나만:\n"
+        "{\n"
+        f'  "destination": "{destination}",\n'
+        '  "summary": "한두 문장 요약",\n'
+        '  "groups": [{"title":"전자·전압", "items":["C타입 어댑터(220V)","보조배터리"]}]\n'
+        "}\n"
+        "카테고리 4~7개, 각 항목은 짧게."
+    )
+    data = run_codex_json(
+        prompt,
+        command=settings.codex_cli_command,
+        model=settings.codex_oauth_model,
+        reasoning_effort=settings.codex_reasoning_effort,
+        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 90),
+    )
+    if not isinstance(data, dict):
+        return None
+    raw_groups = data.get("groups")
+    if not isinstance(raw_groups, list) or not raw_groups:
+        return None
+    groups: list[PrepGroup] = []
+    for raw in raw_groups:
+        if not isinstance(raw, dict):
+            continue
+        title = _clean_str(raw.get("title"))
+        items = _clean_list(raw.get("items"))
+        if title and items:
+            groups.append(PrepGroup(title=title, items=items[:8]))
+    if not groups:
+        return None
+    summary = (data.get("summary") or f"{destination} 여행 준비물").strip()
+    checklist = PrepChecklist(
+        destination=destination,
+        summary=summary,
+        groups=groups,
+        metadata=_llm_metadata(_maps_url(destination, destination)),
+    )
+    _CHECK_CACHE[cache_key] = checklist
+    return checklist

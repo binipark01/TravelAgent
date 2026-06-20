@@ -16,6 +16,7 @@ import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
 import { MapCard } from './MapCard'
+import { ChecklistCard } from './ChecklistCard'
 import { NearbyCard } from './NearbyCard'
 import { StayAreaCard } from './StayAreaCard'
 import { PlanComparisonCard } from './PlanComparisonCard'
@@ -49,6 +50,7 @@ export function PlanCards({
   const safety = plan.safety_info ?? null
   const nearby = plan.nearby_guide ?? null
   const stayAreas = plan.stay_area_guide ?? null
+  const checklist = plan.prep_checklist ?? null
   const tickets = plan.transport_tickets ?? null
 
   // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
@@ -154,6 +156,7 @@ export function PlanCards({
       {nearby != null && <NearbyCard guide={nearby} />}
       {visa != null && <VisaCard visa={visa} />}
       {safety != null && <SafetyCard safety={safety} />}
+      {checklist != null && <ChecklistCard checklist={checklist} />}
       </div>
     </MapFocusContext.Provider>
   )

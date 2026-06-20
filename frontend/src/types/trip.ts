@@ -105,6 +105,7 @@ export interface TripPlanState {
   safety_info?: SafetyInfo | null
   nearby_guide?: NearbyGuide | null
   stay_area_guide?: StayAreaGuide | null
+  prep_checklist?: PrepChecklist | null
   transport_tickets?: TransportTicketGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
@@ -195,6 +196,17 @@ export interface StayAreaGuide {
   summary: string
   areas: StayArea[]
   source_url?: string | null
+}
+
+export interface PrepGroup {
+  title: string
+  items: string[]
+}
+
+export interface PrepChecklist {
+  destination: string
+  summary: string
+  groups: PrepGroup[]
 }
 
 export interface EmergencyContact {

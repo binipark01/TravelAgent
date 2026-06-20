@@ -198,6 +198,20 @@ class StayAreaGuide(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class PrepGroup(StrictBaseModel):
+    title: str  # 예: 전자·전압
+    items: list[str] = Field(default_factory=list)  # 예: ["C타입 어댑터(220V)", "멀티탭"]
+
+
+class PrepChecklist(StrictBaseModel):
+    """출발 전 준비물·할 일 체크리스트(날씨·비자·전압·유심·환전 등 종합)."""
+
+    destination: str
+    summary: str
+    groups: list[PrepGroup] = Field(default_factory=list)
+    metadata: ProviderMetadata
+
+
 class BookingPlatform(StrictBaseModel):
     name: str  # 예: 12Go Asia
     url: str  # 딥링크(검색/랜딩)
