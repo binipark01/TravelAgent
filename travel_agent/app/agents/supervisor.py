@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 from travel_agent.app.agents.accommodation import AccommodationAgent
@@ -237,48 +238,48 @@ class TravelSupervisorAgent:
             )
 
         set_status(state, TripStatus.drafting, "Agent itinerary stage started.")
+        # 항공·숙소·식당은 서로 독립(다른 state 필드 기록)이라 동시에 검색한다 — 가장 느린
+        # 단계(브라우저 스크래핑·웹검색)들이 합쳐지지 않고 겹쳐 돈다. 재검색 판정은 메인스레드
+        # 에서 먼저 한다(state.constraints 기록이 직렬이어야 안전).
+        core_specs: list = []
         if "flight" in selected:
             if self._needs_search(state, "flight", bool(state.transport_options)):
-                self._recorded_step(
-                    recorder,
+                core_specs.append((
                     "FlightAgent",
                     "항공/이동 후보 탐색",
                     lambda: self.flight_agent.run(state),
                     lambda: f"{len(state.transport_options)}개 항공/이동 후보",
-                    [{"tool": "FlightProvider.search_flights",
-                      "count": len(state.transport_options)}],
-                )
+                    lambda: [{"tool": "FlightProvider.search_flights",
+                              "count": len(state.transport_options)}],
+                ))
             else:
                 self._emit_reused(recorder, "항공", len(state.transport_options))
         if "accommodation" in selected:
             if self._needs_search(state, "accommodation", bool(state.accommodation_options)):
-                self._recorded_step(
-                    recorder,
+                core_specs.append((
                     "AccommodationAgent",
                     "숙소 후보 탐색",
                     lambda: self.accommodation_agent.run(state),
                     lambda: f"{len(state.accommodation_options)}개 숙소 후보",
-                    [
-                        {
-                            "tool": "AccommodationSearchTool.search",
-                            "count": len(state.accommodation_options),
-                        }
-                    ],
-                )
+                    lambda: [{"tool": "AccommodationSearchTool.search",
+                              "count": len(state.accommodation_options)}],
+                ))
             else:
                 self._emit_reused(recorder, "숙소", len(state.accommodation_options))
         if "restaurant" in selected:
             if self._needs_search(state, "restaurant", bool(state.poi_candidates)):
-                self._recorded_step(
-                    recorder,
+                core_specs.append((
                     "RestaurantAgent",
                     "맛집/쇼핑/체험 후보 탐색",
                     lambda: self.restaurant_agent.run(state),
                     lambda: f"{len(state.poi_candidates)}개 후보",
-                    [{"tool": "PlacesProvider.search_pois", "count": len(state.poi_candidates)}],
-                )
+                    lambda: [{"tool": "PlacesProvider.search_pois",
+                              "count": len(state.poi_candidates)}],
+                ))
             else:
                 self._emit_reused(recorder, "맛집/관광", len(state.poi_candidates))
+        self._run_parallel(recorder, core_specs)
+        # 동선·예산은 위 결과(관광지·항공·숙소)에 의존하므로 직렬로 둔다.
         if "route" in selected:
             self._recorded_step(
                 recorder,
@@ -306,106 +307,97 @@ class TravelSupervisorAgent:
         # 횡단 정보(입국/비자·현지교통·환율·안전·근교·교통권)는 종합 계획일 때만.
         # 항공권만/숙소만 같은 단일 검색에는 붙이지 않는다(과한 출력 방지).
         if is_full_plan:
-            self._recorded_step(
-                recorder,
-                "VisaAgent",
-                "입국/비자 요건 확인",
-                lambda: self.visa_agent.run(state),
-                lambda: (
-                    state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+            # 1차: 서로 독립인 횡단 정보(비자·교통·환율·안전·근교·숙박구역·멀티시티)를 동시에.
+            # 각각 다른 state 필드만 기록하므로 충돌 없음. 가장 느린 건 근교·숙박구역 웹검색.
+            self._run_parallel(recorder, [
+                (
+                    "VisaAgent", "입국/비자 요건 확인",
+                    lambda: self.visa_agent.run(state),
+                    lambda: (
+                        state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "LocalTransportAgent",
-                "현지 교통 안내",
-                lambda: self.local_transport_agent.run(state),
-                lambda: (
-                    f"{state.local_transport.city} 교통 안내"
-                    if state.local_transport
-                    else "현지 교통 데이터 없음"
+                (
+                    "LocalTransportAgent", "현지 교통 안내",
+                    lambda: self.local_transport_agent.run(state),
+                    lambda: (
+                        f"{state.local_transport.city} 교통 안내"
+                        if state.local_transport else "현지 교통 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "FxAgent",
-                "환율/예산 환산",
-                lambda: self.fx_agent.run(state),
-                lambda: (
-                    f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
-                    f"{state.fx_info.base_currency}"
-                    if state.fx_info
-                    else "환율 정보 없음"
+                (
+                    "FxAgent", "환율/예산 환산",
+                    lambda: self.fx_agent.run(state),
+                    lambda: (
+                        f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
+                        f"{state.fx_info.base_currency}"
+                        if state.fx_info else "환율 정보 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "SafetyAgent",
-                "안전·긴급 정보",
-                lambda: self.safety_agent.run(state),
-                lambda: (
-                    f"{state.safety_info.destination_country} 안전 정보"
-                    if state.safety_info
-                    else "안전 정보 데이터 없음"
+                (
+                    "SafetyAgent", "안전·긴급 정보",
+                    lambda: self.safety_agent.run(state),
+                    lambda: (
+                        f"{state.safety_info.destination_country} 안전 정보"
+                        if state.safety_info else "안전 정보 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "NearbyAgent",
-                "근교 당일치기 정리",
-                lambda: self.nearby_agent.run(state),
-                lambda: (
-                    f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
-                    if state.nearby_guide
-                    else "근교 데이터 없음"
+                (
+                    "NearbyAgent", "근교 당일치기 정리",
+                    lambda: self.nearby_agent.run(state),
+                    lambda: (
+                        f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
+                        if state.nearby_guide else "근교 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "StayAreaAgent",
-                "추천 숙박 구역 정리",
-                lambda: self.stay_area_agent.run(state),
-                lambda: (
-                    f"{state.stay_area_guide.destination} 숙박 구역 "
-                    f"{len(state.stay_area_guide.areas)}곳"
-                    if state.stay_area_guide
-                    else "숙박 구역 데이터 없음"
+                (
+                    "StayAreaAgent", "추천 숙박 구역 정리",
+                    lambda: self.stay_area_agent.run(state),
+                    lambda: (
+                        f"{state.stay_area_guide.destination} 숙박 구역 "
+                        f"{len(state.stay_area_guide.areas)}곳"
+                        if state.stay_area_guide else "숙박 구역 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "ChecklistAgent",
-                "출발 전 준비물 정리",
-                lambda: self.checklist_agent.run(state),
-                lambda: (
-                    f"{state.prep_checklist.destination} 준비물 "
-                    f"{len(state.prep_checklist.groups)}개 그룹"
-                    if state.prep_checklist
-                    else "준비물 데이터 없음"
+                (
+                    "MultiCityAgent", "멀티시티 동선 정리",
+                    lambda: self.multicity_agent.run(state),
+                    lambda: (
+                        f"{len(state.multicity_plan.segments)}개 도시 동선"
+                        if state.multicity_plan else "단일 목적지"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "MultiCityAgent",
-                "멀티시티 동선 정리",
-                lambda: self.multicity_agent.run(state),
-                lambda: (
-                    f"{len(state.multicity_plan.segments)}개 도시 동선"
-                    if state.multicity_plan
-                    else "단일 목적지"
+            ])
+            # 2차: 1차 결과에 의존 — 체크리스트(비자·환율 맥락), 교통권(근교 목적지). 둘은 서로
+            # 독립이라 동시에.
+            self._run_parallel(recorder, [
+                (
+                    "ChecklistAgent", "출발 전 준비물 정리",
+                    lambda: self.checklist_agent.run(state),
+                    lambda: (
+                        f"{state.prep_checklist.destination} 준비물 "
+                        f"{len(state.prep_checklist.groups)}개 그룹"
+                        if state.prep_checklist else "준비물 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
-            self._recorded_step(
-                recorder,
-                "TransportTicketsAgent",
-                "교통권 예매·경로 정리",
-                lambda: self.transport_tickets_agent.run(state),
-                lambda: (
-                    f"{len(state.transport_tickets.platforms)}개 예매처"
-                    if state.transport_tickets
-                    else "교통권 데이터 없음"
+                (
+                    "TransportTicketsAgent", "교통권 예매·경로 정리",
+                    lambda: self.transport_tickets_agent.run(state),
+                    lambda: (
+                        f"{len(state.transport_tickets.platforms)}개 예매처"
+                        if state.transport_tickets else "교통권 데이터 없음"
+                    ),
+                    None,
                 ),
-            )
+            ])
         # 예산은 FX보다 먼저 돌아 현지통화 환산을 못 채운다 → FX 완료 후 여기서 보강.
         if state.budget and state.fx_info and not state.budget.total_local_label:
             state.budget.total_local_label = BudgetAgent._local_total(
@@ -707,6 +699,39 @@ class TravelSupervisorAgent:
             if recorder and step_id:
                 recorder.fail_step(step_id, str(exc))
             raise
+
+    def _run_parallel(self, recorder: AgentRunRecorder | None, specs: list) -> None:
+        """서로 독립인 에이전트 작업들을 동시에 실행한다(가장 느린 단계의 벽시계 단축).
+
+        작업(action)만 스레드로 병렬 실행하고, 기록(start/complete/fail)은 메인스레드에서
+        직렬로 한다 — SQLAlchemy 세션·recorder가 스레드-안전이 아니기 때문. 한 작업이 실패해도
+        나머지는 유지(부가 정보 실패로 전체 계획을 죽이지 않는다). 각 spec은
+        (이름, 입력요약, action, 출력요약fn, tool_calls_fn|None).
+        """
+        runnable = [s for s in specs if s is not None]
+        if not runnable:
+            return
+        step_ids = [recorder.start_step(s[0], s[1]) if recorder else None for s in runnable]
+        errors: list[Exception | None] = [None] * len(runnable)
+        with ThreadPoolExecutor(max_workers=len(runnable)) as executor:
+            futures = {executor.submit(s[2]): i for i, s in enumerate(runnable)}
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:  # noqa: BLE001 - 부가 작업 실패는 격리해 둔다
+                    errors[index] = exc
+        for index, spec in enumerate(runnable):
+            step_id = step_ids[index]
+            if not (recorder and step_id):
+                continue
+            _name, _inp, _action, output_summary, tool_calls = spec
+            if errors[index] is not None:
+                recorder.fail_step(step_id, str(errors[index]))
+            else:
+                recorder.complete_step(
+                    step_id, output_summary(), tool_calls=tool_calls() if tool_calls else None
+                )
 
     def _intake_summary(self, state: TripPlanState) -> str:
         if not state.brief:
