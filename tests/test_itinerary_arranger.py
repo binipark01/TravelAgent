@@ -114,13 +114,14 @@ def test_route_agent_builds_itinerary_from_arrangement(monkeypatch: pytest.Monke
     assert day1.area == "시미즈·니혼다이라"
     assert [item.title for item in day1.items] == ["니혼다이라 유메테라스", "구노잔 도쇼구"]
 
-    # 이동 세그먼트가 동선에 생긴다.
-    assert len(day1.transfers) == 1
-    transfer = day1.transfers[0]
-    assert transfer.origin == "니혼다이라 유메테라스"
-    assert transfer.destination == "구노잔 도쇼구"
-    assert transfer.travel_minutes == 10
-    assert transfer.mode == "로프웨이"
+    # 관광 사이 이동 세그먼트(배치기 이동시간·수단)가 보존된다.
+    attr_transfer = next(t for t in day1.transfers if t.mode == "로프웨이")
+    assert attr_transfer.origin == "니혼다이라 유메테라스"
+    assert attr_transfer.destination == "구노잔 도쇼구"
+    assert attr_transfer.travel_minutes == 10
+
+    # 식당(さわやか)으로 가는 이동도 동선에 들어간다(식사 앞에도 이동 표시).
+    assert any(t.destination == "さわやか" for t in day1.transfers)
 
     # 시간이 이동시간을 반영한다(둘째 항목은 첫째 종료+이동 후 시작).
     assert day1.items[0].start_time.hour == 10

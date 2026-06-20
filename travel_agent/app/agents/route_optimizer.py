@@ -169,7 +169,12 @@ class RouteAgent:
         if arranged.note:
             day.notes.append(arranged.note)
         currency = state.currency
+        # 식당은 보통 동선 근처라 도보 ~7분으로 잡아, 관광뿐 아니라 식사 앞에도 이동을 표시한다.
+        meal_move = 7
         clock = time(10, 0)
+        last_title: str | None = None
+        # 직전 관광 → 다음 관광 이동(분, 수단). 식사를 건너뛰어도 보존했다가 다음 관광에 쓴다.
+        pending: tuple[int, str] | None = None
         lunch_done = False
         dinner_done = False
 
@@ -198,51 +203,70 @@ class RouteAgent:
                 )
             )
 
+        def add_transfer(
+            origin: str, destination: str, start: time, minutes: int, mode: str
+        ) -> time:
+            end = self._add_minutes(start, minutes)
+            day.transfers.append(
+                TransferSegment(
+                    item_id=new_id("xfer"),
+                    origin=origin,
+                    destination=destination,
+                    start_time=start,
+                    end_time=end,
+                    travel_minutes=minutes,
+                    mode=mode or "도보",
+                )
+            )
+            return end
+
         # 식당으로 쓴 곳을 관광지로도 중복 배치하지 않는다(같은 카페가 점심+관광에 뜨는 버그).
         meal_titles = {t.strip().lower() for t in (arranged.lunch, arranged.dinner) if t}
         stops = [s for s in arranged.stops if s.title.strip().lower() not in meal_titles]
-        for index, stop in enumerate(stops):
-            # 점심(11~14시)·저녁(17~22시)을 동선 흐름 속에 끼워넣되 시간대를 벗어나지 않게 한다.
+        for stop in stops:
+            # 점심(11~14시)·저녁(17~22시)을 동선 흐름 속에 끼우되, 식당 앞에도 이동을 넣는다.
             if not lunch_done and arranged.lunch and clock >= time(11, 30):
-                start = min(clock, time(14, 0))
-                meal_end = self._add_minutes(start, 60)
-                add_meal("lunch", arranged.lunch, start, meal_end)
-                clock = max(clock, meal_end)
-                lunch_done = True
+                if last_title is not None:
+                    clock = add_transfer(last_title, arranged.lunch, clock, meal_move, "도보")
+                meal_end = self._add_minutes(clock, 60)
+                add_meal("lunch", arranged.lunch, clock, meal_end)
+                last_title, clock, lunch_done = arranged.lunch, meal_end, True
             if not dinner_done and arranged.dinner and clock >= time(17, 30):
-                start = min(clock, time(22, 0))
-                meal_end = self._add_minutes(start, 60)
-                add_meal("dinner", arranged.dinner, start, meal_end)
-                clock = max(clock, meal_end)
-                dinner_done = True
+                if last_title is not None:
+                    clock = add_transfer(last_title, arranged.dinner, clock, meal_move, "도보")
+                meal_end = self._add_minutes(clock, 60)
+                add_meal("dinner", arranged.dinner, clock, meal_end)
+                last_title, clock, dinner_done = arranged.dinner, meal_end, True
+            # 이 관광으로 이동: 직전이 관광이면 배치기 이동시간, 식사 뒤면 보존된 이동을 쓴다.
+            if last_title is not None:
+                minutes, mode = pending if pending else (meal_move, "도보")
+                clock = add_transfer(last_title, stop.title, clock, minutes, mode)
+                pending = None
             poi = self._lookup(attr_by_title, stop.title)
             end = self._add_minutes(clock, stop.duration_min)
             day.items.append(self._arranged_item(stop, poi, clock, end, currency, state))
-            clock = end
-            if stop.travel_to_next_min > 0 and index < len(stops) - 1:
-                transfer_end = self._add_minutes(clock, stop.travel_to_next_min)
-                day.transfers.append(
-                    TransferSegment(
-                        item_id=new_id("xfer"),
-                        origin=stop.title,
-                        destination=stops[index + 1].title,
-                        start_time=clock,
-                        end_time=transfer_end,
-                        travel_minutes=stop.travel_to_next_min,
-                        mode=stop.travel_mode,
-                    )
-                )
-                clock = transfer_end
-
-        # 흐름상 못 넣은 식사 보강. 저녁은 마지막 일정이 일찍 끝나면 그 직후(최소 17시)로
-        # 당겨 큰 공백을 줄인다(고정 18:30이면 16시쯤 끝난 날 2시간 넘게 비어 버림).
-        if not lunch_done and arranged.lunch:
-            add_meal("lunch", arranged.lunch, time(12, 30), time(13, 30))
-        if not dinner_done and arranged.dinner:
-            dinner_start = min(max(clock, time(17, 0)), time(21, 0))
-            add_meal(
-                "dinner", arranged.dinner, dinner_start, self._add_minutes(dinner_start, 60)
+            last_title, clock = stop.title, end
+            pending = (
+                (stop.travel_to_next_min, stop.travel_mode)
+                if stop.travel_to_next_min > 0
+                else None
             )
+
+        # 흐름상 못 넣은 식사 보강(앞에 이동 포함). 저녁은 마지막 일정이 일찍 끝나면
+        # 17시쯤으로 당겨 큰 공백을 줄인다(고정 18:30이면 16시쯤 끝난 날 2시간 넘게 비어 버림).
+        if not lunch_done and arranged.lunch:
+            if last_title is not None:
+                clock = add_transfer(last_title, arranged.lunch, clock, meal_move, "도보")
+                start = clock
+            else:
+                start = time(12, 30)
+            add_meal("lunch", arranged.lunch, start, self._add_minutes(start, 60))
+            last_title, clock = arranged.lunch, self._add_minutes(start, 60)
+        if not dinner_done and arranged.dinner:
+            if last_title is not None:
+                clock = add_transfer(last_title, arranged.dinner, clock, meal_move, "도보")
+            start = min(max(clock, time(17, 0)), time(21, 0))
+            add_meal("dinner", arranged.dinner, start, self._add_minutes(start, 60))
         return day
 
     def _arranged_item(

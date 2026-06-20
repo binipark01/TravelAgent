@@ -1885,28 +1885,47 @@ legend {
   text-align: center;
 }
 
-/* 장소별 💡 코멘트 모음 박스(일정 아래) */
-.day-tips {
-  display: grid;
-  gap: 5px;
-  margin-top: 8px;
-  padding: 10px 12px;
+/* 이동 행: 장소명 없이 '수단 N분'만 회색으로 */
+.transfer-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/* 장소별 💡 메모를 일정 전체 아래에 박스 하나로 모은다(일차별로 묶어서) */
+.itinerary-memo {
+  margin-top: 14px;
+  padding: 14px 16px;
   background: var(--surface-soft);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 11px;
 }
-.day-tips p {
-  margin: 0;
+.itinerary-memo__title {
+  margin: 0 0 10px;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text, #1f2937);
+}
+.itinerary-memo__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px 22px;
+}
+.itinerary-memo__day-label {
+  margin: 0 0 5px;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--primary, #0f766e);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.itinerary-memo__tip {
+  margin: 0 0 5px;
   font-size: 12px;
   line-height: 1.55;
   color: var(--muted);
 }
-.day-tips .day-tips__title {
-  font-weight: 700;
-  color: var(--text, #1f2937);
-  margin-bottom: 1px;
-}
-.day-tips__place {
+.itinerary-memo__place {
   font-weight: 700;
   color: var(--text, #1f2937);
 }

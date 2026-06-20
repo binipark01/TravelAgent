@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { DayPlan, Itinerary } from '../types/itinerary'
 import { itinerarySummaryLabel } from '../utils/format'
 import { buildItineraryIcs, downloadText } from '../utils/ics'
-import { DayPlanCard, type PoiInfoMap } from './DayPlanCard'
+import { DayPlanCard, collectTips, type PoiInfoMap } from './DayPlanCard'
 import { EmptyState } from './EmptyState'
 
 export function ItineraryTimeline({
@@ -23,6 +23,15 @@ export function ItineraryTimeline({
   }
 
   const hasDays = (itinerary?.days?.length ?? 0) > 0
+
+  // 장소별 💡 메모를 일정 카드마다 흩뿌리지 않고, 일정 아래에 '메모' 박스 하나로 모아 정리한다.
+  const memoByDay = useMemo(() => {
+    if (!itinerary) return []
+    return itinerary.days
+      .map((day) => ({ day: day.day, area: day.area, tips: collectTips(day) }))
+      .filter((group) => group.tips.length > 0)
+  }, [itinerary])
+
   const handleExport = () => {
     if (!itinerary) return
     const name = itinerarySummaryLabel(itinerary.summary) || '여행 일정'
@@ -73,6 +82,25 @@ export function ItineraryTimeline({
               />
             ))}
           </div>
+          {!editing && memoByDay.length > 0 && (
+            <div className="itinerary-memo">
+              <p className="itinerary-memo__title">💡 장소별 메모</p>
+              <div className="itinerary-memo__grid">
+                {memoByDay.map((group) => (
+                  <div className="itinerary-memo__day" key={group.day}>
+                    <p className="itinerary-memo__day-label">
+                      {group.day}일차{group.area ? ` · ${group.area}` : ''}
+                    </p>
+                    {group.tips.map((tip) => (
+                      <p className="itinerary-memo__tip" key={`${tip.place}-${tip.text}`}>
+                        <span className="itinerary-memo__place">{tip.place}</span> {tip.text}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </section>

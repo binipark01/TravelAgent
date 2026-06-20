@@ -112,7 +112,7 @@ function reassignTimes(entries: DayEntry[]): DayEntry[] {
 
 function entryTitle(entry: DayEntry): string {
   if (entry.kind === 'transfer') {
-    return `${cleanDisplayText(entry.data.origin)} → ${cleanDisplayText(entry.data.destination)}`
+    return `🚶 ${transportModeLabel(entry.data.mode)} ${entry.data.travel_minutes}분`
   }
   return cleanDisplayText(entry.data.title)
 }
@@ -125,13 +125,13 @@ function entrySubtitle(entry: DayEntry): string {
     return `${mealTypeLabel(entry.data.meal_type)}${entry.data.area ? ` · ${cleanDisplayText(entry.data.area)}` : ''}`
   }
   if (entry.kind === 'transfer') {
-    return `${transportModeLabel(entry.data.mode)} · 이동 ${entry.data.travel_minutes}분`
+    return '이동'
   }
   return '휴식 또는 일정 조정 시간'
 }
 
 /** 장소별 💡 코멘트(관광지·식당)를 모아 일정 아래 '메모' 박스로 정리한다. */
-function collectTips(day: DayPlan): { place: string; text: string }[] {
+export function collectTips(day: DayPlan): { place: string; text: string }[] {
   const tips: { place: string; text: string }[] = []
   const pull = (title: string, notes: string[]) => {
     const tip = notes.find((note) => note.startsWith('💡'))
@@ -175,8 +175,6 @@ export function DayPlanCard({
           }
         : { label: cleanDisplayText(entry.data.title), area: cleanDisplayText(entry.data.area) },
     )
-
-  const tips = collectTips(day)
 
   const commit = (next: DayEntry[]) => onDayChange?.(entriesToDay(day, next))
   const handleDelete = (id: string) => commit(entries.filter((entry) => entry.id !== id))
@@ -274,12 +272,9 @@ export function DayPlanCard({
                     {hhmm(transfer.start_time)} - {hhmm(transfer.end_time)}
                   </time>
                   <div>
-                    <strong>
-                      {cleanDisplayText(transfer.origin)} → {cleanDisplayText(transfer.destination)}
+                    <strong className="transfer-label">
+                      🚶 {transportModeLabel(transfer.mode)} {transfer.travel_minutes}분
                     </strong>
-                    <p>
-                      {transportModeLabel(transfer.mode)} · 이동 {transfer.travel_minutes}분
-                    </p>
                   </div>
                 </div>
               )
@@ -297,17 +292,6 @@ export function DayPlanCard({
               </div>
             )
           })}
-        </div>
-      )}
-
-      {!editing && tips.length > 0 && (
-        <div className="day-tips">
-          <p className="day-tips__title">💡 메모</p>
-          {tips.map((tip) => (
-            <p key={`${tip.place}-${tip.text}`}>
-              <span className="day-tips__place">{tip.place}</span> {tip.text}
-            </p>
-          ))}
         </div>
       )}
 
