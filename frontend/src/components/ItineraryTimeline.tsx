@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DayPlan, Itinerary } from '../types/itinerary'
 import { itinerarySummaryLabel } from '../utils/format'
+import { buildItineraryIcs, downloadText } from '../utils/ics'
 import { DayPlanCard, type PoiInfoMap } from './DayPlanCard'
 import { EmptyState } from './EmptyState'
 
@@ -21,6 +22,13 @@ export function ItineraryTimeline({
     onChange({ ...itinerary, days: itinerary.days.map((d, i) => (i === dayIndex ? nextDay : d)) })
   }
 
+  const hasDays = (itinerary?.days?.length ?? 0) > 0
+  const handleExport = () => {
+    if (!itinerary) return
+    const name = itinerarySummaryLabel(itinerary.summary) || '여행 일정'
+    downloadText(`${name}.ics`, buildItineraryIcs(itinerary, name), 'text/calendar;charset=utf-8')
+  }
+
   return (
     <section className="card wide-card">
       <div className="section-heading">
@@ -28,14 +36,21 @@ export function ItineraryTimeline({
           <p className="eyebrow">일차별 플랜</p>
           <h2>일정</h2>
         </div>
-        {editable && (itinerary?.days?.length ?? 0) > 0 && (
-          <button
-            type="button"
-            className="itinerary-edit-btn"
-            onClick={() => setEditing((value) => !value)}
-          >
-            {editing ? '✓ 편집 완료' : '✎ 편집'}
-          </button>
+        {hasDays && (
+          <div className="itinerary-actions">
+            <button type="button" className="itinerary-edit-btn" onClick={handleExport}>
+              📅 캘린더
+            </button>
+            {editable && (
+              <button
+                type="button"
+                className="itinerary-edit-btn"
+                onClick={() => setEditing((value) => !value)}
+              >
+                {editing ? '✓ 편집 완료' : '✎ 편집'}
+              </button>
+            )}
+          </div>
         )}
       </div>
       {!itinerary || itinerary.days.length === 0 ? (

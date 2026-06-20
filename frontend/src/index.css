@@ -1826,6 +1826,11 @@ legend {
 }
 
 /* 일정 직접 편집(드래그·시간·삭제) */
+.itinerary-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
 .itinerary-edit-btn {
   flex: none;
   border: 1px solid var(--border);
