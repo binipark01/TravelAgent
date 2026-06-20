@@ -130,6 +130,23 @@ function entrySubtitle(entry: DayEntry): string {
   return '휴식 또는 일정 조정 시간'
 }
 
+/** 장소별 💡 코멘트(관광지·식당)를 모아 일정 아래 '메모' 박스로 정리한다. */
+function collectTips(day: DayPlan): { place: string; text: string }[] {
+  const tips: { place: string; text: string }[] = []
+  const pull = (title: string, notes: string[]) => {
+    const tip = notes.find((note) => note.startsWith('💡'))
+    if (tip) {
+      tips.push({
+        place: cleanDisplayText(title),
+        text: cleanDisplayText(tip.replace(/^💡\s*/, '')),
+      })
+    }
+  }
+  day.items.forEach((item) => pull(item.title, item.notes))
+  day.meals.forEach((meal) => pull(meal.title, meal.notes))
+  return tips
+}
+
 export function DayPlanCard({
   day,
   poiInfo = {},
@@ -158,6 +175,8 @@ export function DayPlanCard({
           }
         : { label: cleanDisplayText(entry.data.title), area: cleanDisplayText(entry.data.area) },
     )
+
+  const tips = collectTips(day)
 
   const commit = (next: DayEntry[]) => onDayChange?.(entriesToDay(day, next))
   const handleDelete = (id: string) => commit(entries.filter((entry) => entry.id !== id))
@@ -233,7 +252,7 @@ export function DayPlanCard({
               })
               return (
                 <div
-                  className={`timeline-row muted ${trig.className}`.trim()}
+                  className={`timeline-row ${trig.className}`.trim()}
                   key={entry.id}
                   {...trig.interactive}
                 >
@@ -242,13 +261,7 @@ export function DayPlanCard({
                   </time>
                   <div>
                     <strong>{cleanDisplayText(meal.title)}</strong>
-                    <p>
-                      {mealTypeLabel(meal.meal_type)}
-                      {meal.area ? ` · ${cleanDisplayText(meal.area)}` : ''}
-                    </p>
-                    {meal.notes[0] && (
-                      <p className="fine-print">{cleanDisplayText(meal.notes[0])}</p>
-                    )}
+                    <span className="meal-tag">{mealTypeLabel(meal.meal_type)}</span>
                   </div>
                 </div>
               )
@@ -284,6 +297,17 @@ export function DayPlanCard({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!editing && tips.length > 0 && (
+        <div className="day-tips">
+          <p className="day-tips__title">💡 메모</p>
+          {tips.map((tip) => (
+            <p key={`${tip.place}-${tip.text}`}>
+              <span className="day-tips__place">{tip.place}</span> {tip.text}
+            </p>
+          ))}
         </div>
       )}
 
@@ -373,10 +397,6 @@ export function ItineraryItemRow({ item, info }: { item: ItineraryItem; info?: P
       </time>
       <div>
         <strong>{cleanDisplayText(item.title)}</strong>
-        <p>
-          {cleanDisplayText(item.location.area ?? item.location.name)} ·{' '}
-          {activityTypeLabel(item.type)}
-        </p>
         {item.booking_required && <span className="small-badge">예약 확인 필요</span>}
       </div>
       {hasMeta && (

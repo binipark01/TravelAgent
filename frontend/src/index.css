@@ -1868,6 +1868,40 @@ legend {
   white-space: nowrap;
 }
 
+/* 식사도 '장소'라 초록(기본 timeline-row), 작은 점심/저녁 태그만 붙인다. */
+.meal-tag {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--primary, #0f766e);
+}
+
+/* 장소별 💡 코멘트 모음 박스(일정 아래) */
+.day-tips {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.day-tips p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.day-tips .day-tips__title {
+  font-weight: 700;
+  color: var(--text, #1f2937);
+  margin-bottom: 1px;
+}
+.day-tips__place {
+  font-weight: 700;
+  color: var(--text, #1f2937);
+}
+
 /* 일정 직접 편집(드래그·시간·삭제) */
 .itinerary-actions {
   display: flex;
