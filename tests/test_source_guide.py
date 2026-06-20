@@ -26,3 +26,11 @@ def test_source_hints_block_lists_regional_sources() -> None:
     assert "TheFork" in block
     assert "GetYourGuide" in block  # 유럽 액티비티
     assert "유랑" in block  # 한국 유럽여행 커뮤니티
+
+
+def test_source_hints_block_always_includes_korean_community() -> None:
+    # 트리플·네이버 카페는 지역 불문 항상 검색하도록 공통 포함.
+    for city in ("파리", "도쿄", "방콕", "이스탄불"):
+        block = source_hints_block(city)
+        assert "트리플" in block
+        assert "네이버 카페" in block

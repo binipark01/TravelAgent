@@ -147,6 +147,13 @@ def hints_for(destination: str) -> SourceHints:
     return _BY_COUNTRY.get(country or "", _GENERIC)
 
 
+# 지역 불문 한국인 실후기 소스 — 항상 함께 검색한다(트리플·네이버 카페가 핵심 요청).
+_KOREAN_COMMUNITY = (
+    "- 한국인 실후기(전 지역 공통): 트리플(Triple) 앱·웹 후기, 네이버 카페 여행 후기글, "
+    "네이버 블로그, 마이리얼트립 후기를 꼭 함께 검색해 최근 한국인 평을 반영하라."
+)
+
+
 def source_hints_block(destination: str) -> str:
     """큐레이터 프롬프트에 끼워넣을 '권위 출처 우선' 안내 문구를 만든다."""
     hints = hints_for(destination)
@@ -160,4 +167,5 @@ def source_hints_block(destination: str) -> str:
     ]
     if hints.extra:
         lines.append(f"- 가이드: {hints.extra}")
+    lines.append(_KOREAN_COMMUNITY)
     return "\n".join(lines)
