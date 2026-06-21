@@ -1,4 +1,4 @@
-import { Send } from 'lucide-react'
+import { Send, Square } from 'lucide-react'
 import { useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import type { LLMAnswerRequest } from '../types/llm'
@@ -6,9 +6,10 @@ import type { LLMAnswerRequest } from '../types/llm'
 interface AgentCommandBoxProps {
   isSubmitting: boolean
   onSubmit: (payload: LLMAnswerRequest) => void
+  onCancel?: () => void
 }
 
-export function AgentCommandBox({ isSubmitting, onSubmit }: AgentCommandBoxProps) {
+export function AgentCommandBox({ isSubmitting, onSubmit, onCancel }: AgentCommandBoxProps) {
   const [message, setMessage] = useState('')
 
   function submitMessage() {
@@ -51,14 +52,26 @@ export function AgentCommandBox({ isSubmitting, onSubmit }: AgentCommandBoxProps
           rows={3}
           required
         />
-        <button
-          className="primary-button composer-submit"
-          type="submit"
-          disabled={isSubmitting || !message.trim()}
-        >
-          <Send aria-hidden="true" />
-          {isSubmitting ? '작성 중' : '보내기'}
-        </button>
+        {isSubmitting ? (
+          <button
+            className="composer-submit composer-stop"
+            type="button"
+            onClick={onCancel}
+            title="실행 중지"
+          >
+            <Square aria-hidden="true" />
+            중지
+          </button>
+        ) : (
+          <button
+            className="primary-button composer-submit"
+            type="submit"
+            disabled={!message.trim()}
+          >
+            <Send aria-hidden="true" />
+            보내기
+          </button>
+        )}
       </div>
     </form>
   )

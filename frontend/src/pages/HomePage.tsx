@@ -411,16 +411,7 @@ export function HomePage() {
                 {active && (
                   <div className="assistant-message">
                     <Clock3 aria-hidden="true" />
-                    <div className="assistant-progress">
-                      <LiveProgress response={turn.response} />
-                      <button
-                        type="button"
-                        className="stop-run-button"
-                        onClick={handleCancel}
-                      >
-                        ⏹ 중지
-                      </button>
-                    </div>
+                    <LiveProgress response={turn.response} />
                   </div>
                 )}
                 {turn.error && <ErrorState message={turn.error} />}
@@ -431,7 +422,11 @@ export function HomePage() {
         </div>
 
         <div className="chat-composer-bar">
-          <AgentCommandBox isSubmitting={isRunning} onSubmit={handleSubmit} />
+          <AgentCommandBox
+            isSubmitting={isRunning}
+            onSubmit={handleSubmit}
+            onCancel={handleCancel}
+          />
         </div>
       </section>
     </div>

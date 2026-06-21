@@ -426,24 +426,27 @@ a {
   margin: 0;
 }
 
-/* 실행 중지 버튼 */
-.stop-run-button {
+/* 실행 중지 버튼: 입력박스의 '보내기' 자리에 들어가는 중지 버튼 */
+.composer-stop {
   align-items: center;
   background: var(--danger-soft, #fde8e8);
   border: 1px solid var(--danger, #d9534f);
-  border-radius: 999px;
+  border-radius: var(--radius);
   color: var(--danger, #c0392b);
   cursor: pointer;
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 800;
-  gap: 4px;
-  padding: 5px 12px;
-  white-space: nowrap;
+  font-weight: 850;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 14px;
 }
-.stop-run-button:hover {
+.composer-stop:hover {
   background: var(--danger, #d9534f);
   color: #fff;
+}
+.composer-stop svg {
+  height: 16px;
+  width: 16px;
 }
 
 .chat-thread {
@@ -479,13 +482,6 @@ a {
   width: 20px;
 }
 
-/* 진행 표시(작성 중) 아래에 '중지' 버튼을 둔다 */
-.assistant-progress {
-  display: grid;
-  gap: 12px;
-  justify-items: start;
-  min-width: 0;
-}
 
 .assistant-message p,
 .user-message p {
