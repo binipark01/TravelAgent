@@ -426,12 +426,6 @@ a {
   margin: 0;
 }
 
-.chat-header-right {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-}
-
 /* 실행 중지 버튼 */
 .stop-run-button {
   align-items: center;
@@ -483,6 +477,14 @@ a {
   height: 20px;
   margin-top: 2px;
   width: 20px;
+}
+
+/* 진행 표시(작성 중) 아래에 '중지' 버튼을 둔다 */
+.assistant-progress {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-width: 0;
 }
 
 .assistant-message p,

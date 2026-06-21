@@ -383,14 +383,7 @@ export function HomePage() {
             <p className="eyebrow">여행 agent</p>
             <h1>여행 요청</h1>
           </div>
-          <div className="chat-header-right">
-            {isRunning && (
-              <button type="button" className="stop-run-button" onClick={handleCancel}>
-                ⏹ 중지
-              </button>
-            )}
-            <span className="status-badge">{statusBadge}</span>
-          </div>
+          <span className="status-badge">{statusBadge}</span>
         </div>
 
         <div className="chat-thread">
@@ -418,7 +411,16 @@ export function HomePage() {
                 {active && (
                   <div className="assistant-message">
                     <Clock3 aria-hidden="true" />
-                    <LiveProgress response={turn.response} />
+                    <div className="assistant-progress">
+                      <LiveProgress response={turn.response} />
+                      <button
+                        type="button"
+                        className="stop-run-button"
+                        onClick={handleCancel}
+                      >
+                        ⏹ 중지
+                      </button>
+                    </div>
                   </div>
                 )}
                 {turn.error && <ErrorState message={turn.error} />}
