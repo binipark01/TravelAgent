@@ -75,6 +75,23 @@ def _weather_block(weather_by_day: dict[int, str] | None) -> str:
     )
 
 
+def _multicity_block(base_city: str, companion_days: dict[str, int] | None) -> str:
+    """동반 도시(예: 오사카의 교토)를 별도의 날로 묶어 배치하게 하는 지시."""
+    if not companion_days:
+        return ""
+    parts = ", ".join(f"{city} {days}일" for city, days in companion_days.items())
+    cities = " / ".join(companion_days.keys())
+    return (
+        f"\n이 일정은 여러 도시로 구성된다. 도시별 권장 일수: {base_city}는 나머지 전부, "
+        f"{parts}.\n"
+        f"[관광지]·[식당]에서 area가 '{cities}'로 시작하는 곳은 그 도시이고, 그 외는 "
+        f"{base_city}다. 각 도시는 연속된 날(들)로 묶어 그 도시 장소만 그 날에 배치하라"
+        "(한 하루 안에서 도시를 섞지 마라). 도시가 바뀌는 날은 note 맨 앞에 "
+        "'○○에서 △△로 이동(전철/기차 약 N분)'을 적고, 그 날 area를 '△△ · 동네'로 하라. "
+        f"본거지 {base_city}는 첫날과 마지막날을 포함하도록 배치하라.\n"
+    )
+
+
 def _nearby_block(nearby_options: list[str] | None) -> str:
     if not nearby_options:
         return ""
@@ -98,6 +115,7 @@ def arrange_itinerary(
     start_date: date | None,
     weather_by_day: dict[int, str] | None = None,
     nearby_options: list[str] | None = None,
+    companion_days: dict[str, int] | None = None,
 ) -> ArrangedItinerary | None:
     """관광지·식당을 날짜별 동선으로 배치한다. 비활성/실패 시 None."""
     if not _enabled() or days_count < 1 or not attractions:
@@ -122,8 +140,9 @@ def arrange_itinerary(
         "오후에 2시간 넘게 붕 뜨는 시간이 없게 하라. 여유로운 페이스여도 주요 명소 사이나 "
         "오후에 카페·쇼핑거리·시장·산책·전망 같은 가벼운 코스를 한두 곳 더 넣어 채워라.\n"
         f"{_weather_block(weather_by_day)}"
+        f"{_multicity_block(destination, companion_days)}"
         f"{_nearby_block(nearby_options)}\n"
-        f"[관광지]\n{_pool_block(attractions, 14)}\n\n"
+        f"[관광지]\n{_pool_block(attractions, 18)}\n\n"
         f"[식당]\n{_pool_block(restaurants, 12)}\n\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
         "{\n"

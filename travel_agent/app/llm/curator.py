@@ -44,6 +44,16 @@ class CuratedPois:
     restaurants: list[POIOption]
 
 
+@dataclass(frozen=True)
+class CompanionCity:
+    """그 도시 여행에서 대다수가 함께 묶는 '핵심 동반 도시'(예: 오사카의 교토)."""
+
+    city: str
+    days: int  # 보통 배분하는 일수
+    reason: str
+    source_url: str | None
+
+
 # 같은 (목적지·관심사·kind)는 한 번만 웹검색한다(웹검색이 비싸서).
 _CITY_CACHE: dict[str, CuratedPois] = {}
 _NEARBY_CACHE: dict[str, NearbyGuide] = {}
@@ -51,6 +61,7 @@ _STAY_CACHE: dict[str, StayAreaGuide] = {}
 _CHECK_CACHE: dict[str, PrepChecklist] = {}
 _MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
 _EVENTS_CACHE: dict[str, LocalEventsGuide] = {}
+_COMPANION_CACHE: dict[str, list[CompanionCity]] = {}
 
 
 def clear_cache() -> None:
@@ -61,6 +72,7 @@ def clear_cache() -> None:
     _CHECK_CACHE.clear()
     _MULTICITY_CACHE.clear()
     _EVENTS_CACHE.clear()
+    _COMPANION_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -391,6 +403,66 @@ def curate_stay_areas(destination: str) -> StayAreaGuide | None:
     )
     _STAY_CACHE[cache_key] = guide
     return guide
+
+
+def curate_companion_cities(destination: str, days_count: int) -> list[CompanionCity]:
+    """그 도시 여행에서 대다수가 함께 묶는 '핵심 동반 도시'를 웹검색으로 판단한다.
+
+    단순 근교 명소가 아니라 그 자체가 목적지급인 도시(예: 오사카↔교토·나라)만. 전철 1시간
+    이내로 당일/1박이 현실적인 곳. 비활성/짧은 일정(3일 미만)/없음이면 빈 리스트 → 단일 도시.
+    """
+    settings = get_settings()
+    if not _enabled(settings) or days_count < 3:
+        return []
+    cache_key = f"{destination.strip().lower()}|{days_count}"
+    if cache_key in _COMPANION_CACHE:
+        return _COMPANION_CACHE[cache_key]
+
+    prompt = (
+        "너는 한국인 여행자를 위한 동선 전문가다. live web search로 실제 여행 후기·추천 일정"
+        "(네이버 블로그·카페, 여행 커뮤니티)을 검색해 판단하라.\n"
+        f"'{destination}' {days_count}일 여행에서, 대다수 여행자가 사실상 함께 묶어 가는 "
+        "'핵심 도시'가 있는가? 단순 근교 명소(공원·온천·작은 마을)가 아니라, 그 자체로 "
+        "목적지급인 별도 도시여야 한다(예: 오사카↔교토·나라, 도쿄↔하코네·닛코). 전철·기차로 "
+        "대략 1시간 이내라 당일치기나 1박이 현실적인 곳만.\n"
+        f"{source_hints_block(destination)}\n"
+        "각 도시에 보통 며칠을 배분하는지, 왜 함께 가는지, 근거 출처 URL을 붙여라. "
+        f"본거지({destination})에는 최소 2일이 남아야 하니 동반 도시 일수 합은 "
+        f"{max(0, days_count - 2)}일을 넘기지 마라. 함께 갈 도시가 없으면 빈 배열.\n\n"
+        "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
+        "{\n"
+        '  "companions": [{"city":"교토", "days":1, '
+        '"reason":"오사카에서 전철 15분, 90% 이상 함께 방문", "source_url":"url"}]\n'
+        "}\n"
+        "최대 2개 도시, 함께 가는 비중이 높은 순."
+    )
+    data = _run(prompt, settings)
+    if not isinstance(data, dict):
+        return []
+    raw = data.get("companions")
+    if not isinstance(raw, list):
+        return []
+    companions: list[CompanionCity] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        city = item.get("city")
+        source_url = _clean_str(item.get("source_url"))
+        # 근거 없는 추천은 버린다(같은 도시·본거지 중복도 제외).
+        if not isinstance(city, str) or not city.strip() or not source_url:
+            continue
+        if city.strip().lower() == destination.strip().lower():
+            continue
+        companions.append(
+            CompanionCity(
+                city=city.strip(),
+                days=_coerce_nights(item.get("days"), 1),
+                reason=(item.get("reason") or "").strip(),
+                source_url=source_url,
+            )
+        )
+    _COMPANION_CACHE[cache_key] = companions[:2]
+    return _COMPANION_CACHE[cache_key]
 
 
 def curate_events(

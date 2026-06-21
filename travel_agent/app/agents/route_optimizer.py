@@ -6,7 +6,11 @@ from math import ceil
 
 from travel_agent.app.connectors.nearby.day_trips import lookup_nearby
 from travel_agent.app.connectors.weather.open_meteo import fetch_trip_weather
-from travel_agent.app.llm.curator import curate_nearby
+from travel_agent.app.llm.curator import (
+    curate_city_pois,
+    curate_companion_cities,
+    curate_nearby,
+)
 from travel_agent.app.llm.itinerary_arranger import ArrangedDay, arrange_itinerary
 from travel_agent.app.providers.base import RoutesProvider
 from travel_agent.app.schemas.common import Location, Money
@@ -53,9 +57,14 @@ class RouteAgent:
         weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
         # 근교 당일치기 후보 — 일정이 여유로우면 배치기가 하루를 근교로 배정한다(빡빡하면 생략).
         nearby_options = self._nearby_options(state.selected_destination)
+        # 사실상 같이 가는 핵심 도시(오사카↔교토 등)가 있으면 그 도시 실제 명소를 풀에 합쳐
+        # 별도의 날로 편성한다(날 수가 충분할 때만, LLM 웹검색 판단).
+        attractions, restaurants, companion_days = self._merge_companion_cities(
+            state, days_count, attractions, restaurants
+        )
 
-        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교 포함) 그걸 쓰고, 비활성/
-        # 실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
+        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교·동반도시 포함) 그걸 쓰고,
+        # 비활성/실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
         arrangement = arrange_itinerary(
             state.selected_destination or "여행지",
             days_count=days_count,
@@ -65,6 +74,7 @@ class RouteAgent:
             start_date=brief.start_date,
             weather_by_day=weather_by_day,
             nearby_options=nearby_options,
+            companion_days=companion_days or None,
         )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
@@ -321,6 +331,56 @@ class RouteAgent:
         if not guide:
             return []
         return [dest.name for dest in guide.destinations][:6]
+
+    def _merge_companion_cities(
+        self,
+        state: TripPlanState,
+        days_count: int,
+        attractions: list[POIOption],
+        restaurants: list[POIOption],
+    ) -> tuple[list[POIOption], list[POIOption], dict[str, int]]:
+        """오사카↔교토처럼 사실상 같이 가는 핵심 도시의 실제 명소를 풀에 합치고, 도시별
+        일수를 돌려준다. 비활성/짧은 일정/없음이면 입력 그대로(단일 도시)."""
+        destination = state.selected_destination
+        brief = state.brief
+        if not destination or brief is None:
+            return attractions, restaurants, {}
+        companions = curate_companion_cities(destination, days_count)
+        if not companions:
+            return attractions, restaurants, {}
+        budget = max(0, days_count - 2)  # 본거지에 최소 2일 남긴다
+        city_days: dict[str, int] = {}
+        for comp in companions:
+            if budget <= 0:
+                break
+            give = min(max(comp.days, 1), budget)
+            pois = curate_city_pois(
+                comp.city,
+                interests=brief.must_include,
+                start_date=brief.start_date,
+                currency=state.currency,
+                attraction_pool=[],
+                restaurant_pool=[],
+            )
+            if not pois or not (pois.attractions or pois.restaurants):
+                continue
+            attractions = attractions + [self._tag_city(p, comp.city) for p in pois.attractions]
+            restaurants = restaurants + [self._tag_city(p, comp.city) for p in pois.restaurants]
+            city_days[comp.city] = give
+            budget -= give
+        return attractions, restaurants, city_days
+
+    @staticmethod
+    def _tag_city(poi: POIOption, city: str) -> POIOption:
+        """배치기가 도시별로 묶도록 area 앞에 도시명을 붙인다('교토 · 기온')."""
+        area = (poi.area or "").strip()
+        if area.startswith(city):
+            new_area = area
+        elif area:
+            new_area = f"{city} · {area}"
+        else:
+            new_area = city
+        return poi.model_copy(update={"area": new_area})
 
     def _fetch_weather(self, state, brief, days_count: int) -> dict[date, str]:
         """여행 날짜별 날씨를 한 번 받아 dict로 돌려준다(실패하면 빈 dict)."""
