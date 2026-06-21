@@ -263,10 +263,16 @@ class RouteAgent:
             add_meal("lunch", arranged.lunch, start, self._add_minutes(start, 60))
             last_title, clock = arranged.lunch, self._add_minutes(start, 60)
         if not dinner_done and arranged.dinner:
+            # 저녁은 17~22시 안에서 유동적으로: 자연스러운 저녁때(약 18시)부터 잡되, 일정이 늦게
+            # 끝나면 그 흐름을 따라 더 늦게 둔다(한 시각에 고정하지 않는다). 이동은 저녁 직전에.
+            earliest = self._add_minutes(clock, meal_move) if last_title else clock
+            dinner_start = min(max(earliest, time(18, 0)), time(21, 0))
             if last_title is not None:
-                clock = add_transfer(last_title, arranged.dinner, clock, meal_move, "도보")
-            start = min(max(clock, time(17, 0)), time(21, 0))
-            add_meal("dinner", arranged.dinner, start, self._add_minutes(start, 60))
+                t_start = self._add_minutes(dinner_start, -meal_move)
+                if t_start < clock:
+                    t_start = clock
+                add_transfer(last_title, arranged.dinner, t_start, meal_move, "도보")
+            add_meal("dinner", arranged.dinner, dinner_start, self._add_minutes(dinner_start, 60))
         return day
 
     def _arranged_item(
