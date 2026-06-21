@@ -145,6 +145,11 @@ class TravelSupervisorAgent:
         # 다른 도시로 전환: 선택을 비워 재선택 + 이전 도시 결과 무효화.
         brief.selected_destination = None
         state.selected_destination = None
+        # 이전 도시에 묶인 편집·안내 입력도 비운다 — intake가 must_include 등을 턴 사이에
+        # 보존해, 히로시마의 '미야지마 꼭 넣어줘'가 파리 일정에 남는 일을 막는다.
+        brief.must_include = []
+        brief.must_avoid = []
+        brief.clarification = None
         self._reset_destination_bound_results(state)
 
     @staticmethod
