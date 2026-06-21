@@ -22,6 +22,8 @@ from travel_agent.app.schemas.common import Location, Money, SourceRef
 from travel_agent.app.schemas.providers import (
     CitySegment,
     IntercityLeg,
+    LocalEvent,
+    LocalEventsGuide,
     MultiCityPlan,
     NearbyDestination,
     NearbyGuide,
@@ -48,6 +50,7 @@ _NEARBY_CACHE: dict[str, NearbyGuide] = {}
 _STAY_CACHE: dict[str, StayAreaGuide] = {}
 _CHECK_CACHE: dict[str, PrepChecklist] = {}
 _MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
+_EVENTS_CACHE: dict[str, LocalEventsGuide] = {}
 
 
 def clear_cache() -> None:
@@ -57,6 +60,7 @@ def clear_cache() -> None:
     _STAY_CACHE.clear()
     _CHECK_CACHE.clear()
     _MULTICITY_CACHE.clear()
+    _EVENTS_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -386,6 +390,87 @@ def curate_stay_areas(destination: str) -> StayAreaGuide | None:
         metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
     )
     _STAY_CACHE[cache_key] = guide
+    return guide
+
+
+def curate_events(
+    destination: str, start_date: date | None, end_date: date | None
+) -> LocalEventsGuide | None:
+    """여행 날짜에 목적지에서 열리는 축제·전시·행사를 웹검색으로 찾는다.
+
+    실제로 그 기간에 열리는 것만, 출처와 함께. 없으면(또는 비활성/실패) None → 카드 미표시.
+    날짜를 모르면 그 도시의 대표 시즌 행사를 안내한다.
+    """
+    settings = get_settings()
+    if not _enabled(settings):
+        return None
+    if start_date and end_date:
+        date_label = f"{start_date.isoformat()} ~ {end_date.isoformat()}"
+        when = f"여행 기간은 {date_label}이다. 이 기간과 겹치는 행사를 우선하라."
+    else:
+        date_label = ""
+        when = "구체적 날짜를 모르니 그 도시의 대표적인 시즌 축제·연례 행사를 알려줘라."
+    cache_key = f"{destination.strip().lower()}|{date_label}"
+    if cache_key in _EVENTS_CACHE:
+        return _EVENTS_CACHE[cache_key]
+
+    prompt = (
+        "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 관광청·공식 행사 페이지, "
+        "지역 뉴스, 네이버 블로그·카페를 검색해 "
+        f"'{destination}'에서 열리는 축제·전시·콘서트·시장·스포츠 등 여행자가 갈 만한 행사를 "
+        f"정리하라. {when}\n"
+        f"{source_hints_block(destination)}\n"
+        "반드시 실제로 그 시기에 열리는 행사만 적고, 각 행사에 근거 출처 URL을 붙여라. "
+        "출처를 못 찾거나 그 기간에 열리는지 불확실하면 빼라(지어내지 마라). "
+        "해당 기간에 특별한 행사가 없으면 events를 빈 배열로 둬라.\n\n"
+        "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
+        "{\n"
+        f'  "destination": "{destination}",\n'
+        '  "summary": "이 시기 행사 분위기 한두 문장(없으면 그렇게)",\n'
+        '  "events": [{"name":"기온 마쓰리", "category":"축제", "period":"7/17~24", '
+        '"venue":"야사카 신사 일대", "highlight":"교토 3대 축제, 야마보코 순행", '
+        '"source_url":"url"}]\n'
+        "}\n"
+        "행사 최대 6개, 여행 기간과 가까운 순."
+    )
+    data = _run(prompt, settings)
+    if not isinstance(data, dict):
+        return None
+    raw_events = data.get("events")
+    if not isinstance(raw_events, list):
+        return None
+    events: list[LocalEvent] = []
+    for raw in raw_events:
+        if not isinstance(raw, dict):
+            continue
+        name = raw.get("name")
+        source_url = _clean_str(raw.get("source_url"))
+        # 출처 없는 행사는 신뢰할 수 없으니 버린다(없는 행사 지어내기 방지).
+        if not isinstance(name, str) or not name.strip() or not source_url:
+            continue
+        events.append(
+            LocalEvent(
+                name=name.strip(),
+                category=(raw.get("category") or "행사").strip(),
+                period=(raw.get("period") or "").strip(),
+                venue=_clean_str(raw.get("venue")),
+                highlight=_clean_str(raw.get("highlight")),
+                source_url=source_url,
+            )
+        )
+    if not events:
+        return None
+    summary = (data.get("summary") or f"{destination} 여행 기간 행사").strip()
+    first_source = next((e.source_url for e in events if e.source_url), None)
+    guide = LocalEventsGuide(
+        destination=destination,
+        date_range=date_label,
+        summary=summary,
+        events=events,
+        source_url=first_source,
+        metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
+    )
+    _EVENTS_CACHE[cache_key] = guide
     return guide
 
 

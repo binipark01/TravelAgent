@@ -19,6 +19,7 @@ from travel_agent.app.schemas.providers import (
     AccommodationOption,
     FlightOption,
     FxInfo,
+    LocalEventsGuide,
     LocalTransportPlan,
     MultiCityPlan,
     NearbyGuide,
@@ -64,6 +65,7 @@ class TripPlanState(StrictBaseModel):
     stay_area_guide: StayAreaGuide | None = None
     prep_checklist: PrepChecklist | None = None
     multicity_plan: MultiCityPlan | None = None
+    local_events: LocalEventsGuide | None = None
     transport_tickets: TransportTicketGuide | None = None
     critic_findings: list[CriticFinding] = Field(default_factory=list)
     approval_requests: list[ApprovalRequest] = Field(default_factory=list)
@@ -118,6 +120,7 @@ class FinalPlanResponse(StrictBaseModel):
     stay_area_guide: StayAreaGuide | None = None
     prep_checklist: PrepChecklist | None = None
     multicity_plan: MultiCityPlan | None = None
+    local_events: LocalEventsGuide | None = None
     transport_tickets: TransportTicketGuide | None = None
     risk_findings: list[CriticFinding]
     critic_findings: list[CriticFinding]

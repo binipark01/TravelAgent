@@ -10,6 +10,7 @@ from travel_agent.app.agents.checklist import ChecklistAgent
 from travel_agent.app.agents.core_planner import CorePlannerAgent
 from travel_agent.app.agents.critic import PlanCriticAgent
 from travel_agent.app.agents.destination import DestinationDiscoveryAgent
+from travel_agent.app.agents.events import LocalEventsAgent
 from travel_agent.app.agents.fx import FxAgent
 from travel_agent.app.agents.intake import IntakeAgent
 from travel_agent.app.agents.llm_client import (
@@ -86,6 +87,7 @@ class TravelSupervisorAgent:
         self.safety_agent = SafetyAgent()
         self.nearby_agent = NearbyAgent()
         self.stay_area_agent = StayAreaAgent()
+        self.events_agent = LocalEventsAgent()
         self.checklist_agent = ChecklistAgent()
         self.multicity_agent = MultiCityAgent()
         self.transport_tickets_agent = TransportTicketsAgent()
@@ -177,6 +179,7 @@ class TravelSupervisorAgent:
         state.prep_checklist = None
         state.multicity_plan = None
         state.transport_tickets = None
+        state.local_events = None
         # 재검색 판정용 도메인 서명 캐시도 비워 확실히 다시 검색하게 한다.
         for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
             state.constraints.pop(key, None)
@@ -377,6 +380,16 @@ class TravelSupervisorAgent:
                     lambda: (
                         f"{len(state.multicity_plan.segments)}개 도시 동선"
                         if state.multicity_plan else "단일 목적지"
+                    ),
+                    None,
+                ),
+                (
+                    "LocalEventsAgent", "현지 축제·이벤트 검색",
+                    lambda: self.events_agent.run(state),
+                    lambda: (
+                        f"{state.local_events.destination} 행사 "
+                        f"{len(state.local_events.events)}건"
+                        if state.local_events else "해당 기간 행사 없음"
                     ),
                     None,
                 ),

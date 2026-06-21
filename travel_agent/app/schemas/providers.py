@@ -199,6 +199,26 @@ class StayAreaGuide(StrictBaseModel):
     metadata: ProviderMetadata
 
 
+class LocalEvent(StrictBaseModel):
+    name: str  # 예: 기온 마쓰리
+    category: str  # 예: 축제 / 전시 / 콘서트 / 시장 / 스포츠
+    period: str  # 예: 7/17~24 (여행 기간과 겹치는지 보이게)
+    venue: str | None = None  # 예: 야사카 신사 일대
+    highlight: str | None = None  # 한 줄: 왜 볼 만한지
+    source_url: str | None = None
+
+
+class LocalEventsGuide(StrictBaseModel):
+    """여행 날짜에 목적지에서 열리는 축제·전시·행사 모음(없으면 표시 안 함)."""
+
+    destination: str
+    date_range: str  # 예: 2026-07-18 ~ 2026-07-21
+    summary: str
+    events: list[LocalEvent] = Field(default_factory=list)
+    source_url: str | None = None
+    metadata: ProviderMetadata
+
+
 class PrepGroup(StrictBaseModel):
     title: str  # 예: 전자·전압
     items: list[str] = Field(default_factory=list)  # 예: ["C타입 어댑터(220V)", "멀티탭"]

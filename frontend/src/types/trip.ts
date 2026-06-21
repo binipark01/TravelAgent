@@ -108,6 +108,7 @@ export interface TripPlanState {
   stay_area_guide?: StayAreaGuide | null
   prep_checklist?: PrepChecklist | null
   multicity_plan?: MultiCityPlan | null
+  local_events?: LocalEventsGuide | null
   transport_tickets?: TransportTicketGuide | null
   risk_findings: CriticFinding[]
   critic_findings: CriticFinding[]
@@ -197,6 +198,23 @@ export interface StayAreaGuide {
   destination: string
   summary: string
   areas: StayArea[]
+  source_url?: string | null
+}
+
+export interface LocalEvent {
+  name: string
+  category: string
+  period: string
+  venue?: string | null
+  highlight?: string | null
+  source_url?: string | null
+}
+
+export interface LocalEventsGuide {
+  destination: string
+  date_range: string
+  summary: string
+  events: LocalEvent[]
   source_url?: string | null
 }
 

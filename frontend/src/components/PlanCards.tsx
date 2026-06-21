@@ -15,6 +15,7 @@ import { BudgetBreakdownCard } from './BudgetBreakdownCard'
 import { FxCard } from './FxCard'
 import { ItineraryTimeline } from './ItineraryTimeline'
 import { LocalTransportCard } from './LocalTransportCard'
+import { LocalEventsCard } from './LocalEventsCard'
 import { ChecklistCard } from './ChecklistCard'
 import { MultiCityCard } from './MultiCityCard'
 import { NearbyCard } from './NearbyCard'
@@ -55,6 +56,7 @@ export function PlanCards({
   const stayAreas = plan.stay_area_guide ?? null
   const checklist = plan.prep_checklist ?? null
   const multicity = plan.multicity_plan ?? null
+  const events = plan.local_events ?? null
   const tickets = plan.transport_tickets ?? null
 
   // 일정 항목에 평점·추천체류시간을 채우기 위해 후보(맛집·관광지)에서 정보를 끌어온다.
@@ -167,6 +169,7 @@ export function PlanCards({
       {tickets != null && <TransportTicketsCard guide={tickets} />}
       {localTransport != null && <LocalTransportCard plan={localTransport} />}
       {nearby != null && <NearbyCard guide={nearby} />}
+      {events != null && <LocalEventsCard guide={events} />}
       {visa != null && <VisaCard visa={visa} />}
       {safety != null && <SafetyCard safety={safety} />}
       {checklist != null && <ChecklistCard checklist={checklist} />}
