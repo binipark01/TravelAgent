@@ -220,23 +220,37 @@ class RouteAgent:
             )
             return end
 
+        def place_meal(meal_type: str, title: str, floor: time, cap: time) -> None:
+            """식사의 '시작시간'만 창[floor, cap] 안에 유동적으로 둔다(끝은 창을 넘겨도 됨 —
+            창 안에서 다 먹을 필요는 없다). 한 시각에 고정하지 않고 일정 흐름을 따르되, 너무
+            이르면 floor, 너무 늦으면 cap으로 당긴다. 이동(도보)은 식당 도착 직전에 붙인다."""
+            nonlocal clock, last_title
+            earliest = self._add_minutes(clock, meal_move) if last_title is not None else clock
+            start = min(max(earliest, floor), cap)
+            if last_title is not None:
+                t_start = self._add_minutes(start, -meal_move)
+                if t_start < clock:
+                    # 일정이 창을 넘겨 끝나 이동을 당겨 넣을 수 없으면 이동 직후로 둔다
+                    # (시작이 창 끝을 살짝 넘겨도 OK).
+                    t_start = clock
+                    start = self._add_minutes(clock, meal_move)
+                add_transfer(last_title, title, t_start, meal_move, "도보")
+            meal_end = self._add_minutes(start, 60)
+            add_meal(meal_type, title, start, meal_end)
+            last_title, clock = title, meal_end
+
         # 식당으로 쓴 곳을 관광지로도 중복 배치하지 않는다(같은 카페가 점심+관광에 뜨는 버그).
         meal_titles = {t.strip().lower() for t in (arranged.lunch, arranged.dinner) if t}
         stops = [s for s in arranged.stops if s.title.strip().lower() not in meal_titles]
         for stop in stops:
-            # 점심(11~14시)·저녁(17~22시)을 동선 흐름 속에 끼우되, 식당 앞에도 이동을 넣는다.
+            # 점심(시작 11~14시)·저녁(시작 17~22시)을 동선 흐름에 끼운다. 식당 앞에도 이동을 넣고,
+            # pending(직전 관광→다음 관광 이동)은 식사를 건너뛰어 보존했다 다음 관광에 쓴다.
             if not lunch_done and arranged.lunch and clock >= time(11, 30):
-                if last_title is not None:
-                    clock = add_transfer(last_title, arranged.lunch, clock, meal_move, "도보")
-                meal_end = self._add_minutes(clock, 60)
-                add_meal("lunch", arranged.lunch, clock, meal_end)
-                last_title, clock, lunch_done = arranged.lunch, meal_end, True
+                place_meal("lunch", arranged.lunch, time(11, 0), time(14, 0))
+                lunch_done = True
             if not dinner_done and arranged.dinner and clock >= time(17, 30):
-                if last_title is not None:
-                    clock = add_transfer(last_title, arranged.dinner, clock, meal_move, "도보")
-                meal_end = self._add_minutes(clock, 60)
-                add_meal("dinner", arranged.dinner, clock, meal_end)
-                last_title, clock, dinner_done = arranged.dinner, meal_end, True
+                place_meal("dinner", arranged.dinner, time(18, 0), time(22, 0))
+                dinner_done = True
             # 이 관광으로 이동: 직전이 관광이면 배치기 이동시간, 식사 뒤면 보존된 이동을 쓴다.
             if last_title is not None:
                 minutes, mode = pending if pending else (meal_move, "도보")
@@ -252,27 +266,12 @@ class RouteAgent:
                 else None
             )
 
-        # 흐름상 못 넣은 식사 보강(앞에 이동 포함). 저녁은 마지막 일정이 일찍 끝나면
-        # 17시쯤으로 당겨 큰 공백을 줄인다(고정 18:30이면 16시쯤 끝난 날 2시간 넘게 비어 버림).
+        # 흐름상 못 넣은 식사 보강(시작시간만 창 안, 끝은 넘겨도 됨). 점심은 자연스러운 정오쯤,
+        # 저녁은 자연스러운 저녁때(18시)부터 — 일정이 늦게 끝나면 그 흐름을 따라간다.
         if not lunch_done and arranged.lunch:
-            if last_title is not None:
-                clock = add_transfer(last_title, arranged.lunch, clock, meal_move, "도보")
-                start = clock
-            else:
-                start = time(12, 30)
-            add_meal("lunch", arranged.lunch, start, self._add_minutes(start, 60))
-            last_title, clock = arranged.lunch, self._add_minutes(start, 60)
+            place_meal("lunch", arranged.lunch, time(12, 0), time(14, 0))
         if not dinner_done and arranged.dinner:
-            # 저녁은 17~22시 안에서 유동적으로: 자연스러운 저녁때(약 18시)부터 잡되, 일정이 늦게
-            # 끝나면 그 흐름을 따라 더 늦게 둔다(한 시각에 고정하지 않는다). 이동은 저녁 직전에.
-            earliest = self._add_minutes(clock, meal_move) if last_title else clock
-            dinner_start = min(max(earliest, time(18, 0)), time(21, 0))
-            if last_title is not None:
-                t_start = self._add_minutes(dinner_start, -meal_move)
-                if t_start < clock:
-                    t_start = clock
-                add_transfer(last_title, arranged.dinner, t_start, meal_move, "도보")
-            add_meal("dinner", arranged.dinner, dinner_start, self._add_minutes(dinner_start, 60))
+            place_meal("dinner", arranged.dinner, time(18, 0), time(22, 0))
         return day
 
     def _arranged_item(
