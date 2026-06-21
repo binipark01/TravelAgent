@@ -295,13 +295,6 @@ export function DayPlanCard({
         </div>
       )}
 
-      {day.notes.length > 0 && (
-        <ul className="text-list compact">
-          {day.notes.map((note) => (
-            <li key={note}>{cleanDisplayText(note)}</li>
-          ))}
-        </ul>
-      )}
     </article>
   )
 }
