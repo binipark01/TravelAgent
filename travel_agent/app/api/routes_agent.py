@@ -65,6 +65,12 @@ def continue_agent_run(run_id: str, db: Session = Depends(get_db)) -> AgentRunDe
     return AgentService(db).continue_run(run_id)
 
 
+@router.post("/{run_id}/cancel", response_model=AgentRunDetailResponse)
+def cancel_agent_run(run_id: str, db: Session = Depends(get_db)) -> AgentRunDetailResponse:
+    # 실행 중지: 협조적 취소 플래그 + 상태를 cancelled로. 백그라운드 실행은 다음 단계에서 멈춘다.
+    return AgentService(db).cancel_run(run_id)
+
+
 @router.post("/{run_id}/itinerary", response_model=AgentRunDetailResponse)
 def update_agent_itinerary(
     run_id: str, itinerary: Itinerary, db: Session = Depends(get_db)

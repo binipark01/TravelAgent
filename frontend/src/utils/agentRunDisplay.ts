@@ -14,6 +14,7 @@ export const RUN_STATUS_LABELS: Record<string, string> = {
   waiting_for_user: '추가 정보 필요',
   completed: '완료',
   failed: '실패',
+  cancelled: '중지됨',
 }
 
 /** core_plan_decided 이벤트에서 코어가 고른 서브에이전트 키 목록을 꺼낸다. */

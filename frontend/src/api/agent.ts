@@ -45,6 +45,10 @@ export function continueAgentRun(runId: string): Promise<AgentRunDetailResponse>
   return apiRequest<AgentRunDetailResponse>(`/agent/runs/${runId}/continue`, { method: 'POST' })
 }
 
+export function cancelAgentRun(runId: string): Promise<AgentRunDetailResponse> {
+  return apiRequest<AgentRunDetailResponse>(`/agent/runs/${runId}/cancel`, { method: 'POST' })
+}
+
 export function getAgentRunEvents(runId: string): Promise<AgentEvent[]> {
   return apiRequest<AgentEvent[]>(`/agent/runs/${runId}/events`)
 }

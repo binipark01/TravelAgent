@@ -3,6 +3,7 @@ import { Bot, CheckCircle2, Circle, Clock3, Plane, Plus } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   addAgentRunMessage,
+  cancelAgentRun,
   createAgentRun,
   getAgentRun,
   listAgentRuns,
@@ -240,6 +241,26 @@ export function HomePage() {
     mutation.mutate({ payload, turnId })
   }
 
+  // 실행 중지: 백그라운드 실행에 취소 신호를 보내고(다음 단계 경계에서 멈춤) 화면은 즉시
+  // 멈춘 것으로 전환한다. 그때까지 모인 부분 결과(카드)는 그대로 둔다.
+  async function handleCancel() {
+    const id = pollingRunId ?? runId
+    const turnId = activeTurnId
+    setPollingRunId(null)
+    setActiveTurnId(null)
+    if (!id) return
+    try {
+      const detail = await cancelAgentRun(id)
+      const response = adaptDetail(detail)
+      setTurns((prev) =>
+        prev.map((turn) => (turn.id === turnId ? { ...turn, response } : turn)),
+      )
+      void runsQuery.refetch()
+    } catch (error) {
+      console.error('중지 실패', error)
+    }
+  }
+
   // 실행이 진행 중인지(POST 대기 또는 폴링 중) — 진행 표시·로딩 상태에 쓴다.
   const isRunning = activeTurnId != null
   // 중앙 캔버스/좌측 패널은 가장 최근에 응답이 있는 턴을 기준으로 보여준다(폴링 중 실시간 갱신).
@@ -362,7 +383,14 @@ export function HomePage() {
             <p className="eyebrow">여행 agent</p>
             <h1>여행 요청</h1>
           </div>
-          <span className="status-badge">{statusBadge}</span>
+          <div className="chat-header-right">
+            {isRunning && (
+              <button type="button" className="stop-run-button" onClick={handleCancel}>
+                ⏹ 중지
+              </button>
+            )}
+            <span className="status-badge">{statusBadge}</span>
+          </div>
         </div>
 
         <div className="chat-thread">
@@ -408,7 +436,12 @@ export function HomePage() {
   )
 }
 
-const TERMINAL_STATUSES: AgentRunStatus[] = ['completed', 'failed', 'waiting_for_user']
+const TERMINAL_STATUSES: AgentRunStatus[] = [
+  'completed',
+  'failed',
+  'waiting_for_user',
+  'cancelled',
+]
 function isTerminalStatus(status: AgentRunStatus): boolean {
   return TERMINAL_STATUSES.includes(status)
 }

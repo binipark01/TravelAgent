@@ -52,6 +52,9 @@ class AgentService:
     def get_run(self, run_id: str) -> AgentRunDetailResponse:
         return self.runtime.get_run(run_id)
 
+    def cancel_run(self, run_id: str) -> AgentRunDetailResponse:
+        return self.runtime.cancel_run(run_id)
+
     def update_itinerary(self, run_id: str, itinerary: Itinerary) -> AgentRunDetailResponse:
         return self.runtime.update_itinerary(run_id, itinerary)
 

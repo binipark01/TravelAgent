@@ -426,6 +426,32 @@ a {
   margin: 0;
 }
 
+.chat-header-right {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+/* 실행 중지 버튼 */
+.stop-run-button {
+  align-items: center;
+  background: var(--danger-soft, #fde8e8);
+  border: 1px solid var(--danger, #d9534f);
+  border-radius: 999px;
+  color: var(--danger, #c0392b);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 4px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.stop-run-button:hover {
+  background: var(--danger, #d9534f);
+  color: #fff;
+}
+
 .chat-thread {
   align-content: start;
   display: grid;

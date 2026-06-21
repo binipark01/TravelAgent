@@ -1,6 +1,12 @@
 import type { TripPlanState } from './trip'
 
-export type AgentRunStatus = 'queued' | 'running' | 'waiting_for_user' | 'completed' | 'failed'
+export type AgentRunStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting_for_user'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 export type AgentStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
 export type AgentEventType =
   | 'user_message'

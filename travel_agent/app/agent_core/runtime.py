@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from travel_agent.app.agent_core.cancellation import (
+    RunCancelled,
+    request_cancel,
+)
+from travel_agent.app.agent_core.cancellation import (
+    clear as clear_cancel,
+)
 from travel_agent.app.agent_core.checkpoint import CheckpointStore
 from travel_agent.app.agent_core.event_bus import EventBus
 from travel_agent.app.agent_core.run_context import RunContext
@@ -225,6 +232,21 @@ class AgentRuntime:
         state = self.trip_repository.load_latest_state(run.trip_id)
         return self._detail_response(run, state)
 
+    def cancel_run(self, run_id: str) -> AgentRunDetailResponse:
+        """실행 중지: 협조적 취소 플래그를 세워 백그라운드 실행이 다음 단계 경계에서 멈추게
+        하고, 아직 진행 중이면 상태를 즉시 cancelled로 표시해 화면이 바로 반응하게 한다."""
+        run = self.run_repository.get_run(run_id)  # 없으면 404
+        request_cancel(run_id)
+        if run.status in (AgentRunStatus.queued, AgentRunStatus.running):
+            self.run_repository.update_run(
+                run_id,
+                status=AgentRunStatus.cancelled,
+                current_step=None,
+                completed_at=utc_now(),
+            )
+            self.session.commit()
+        return self.get_run(run_id)
+
     def update_itinerary(self, run_id: str, itinerary: Itinerary) -> AgentRunDetailResponse:
         """사용자가 화면에서 직접 편집한 일정을 저장한다(드래그·삭제·시간 수정)."""
         run = self.run_repository.get_run(run_id)
@@ -348,6 +370,22 @@ class AgentRuntime:
                 completed_at=utc_now() if status == AgentRunStatus.completed else None,
             )
             ctx.checkpoint_store.save(state)
+        except RunCancelled:
+            # 사용자가 중지를 요청함 — 실패가 아니라 '취소'로 마무리하고 부분 결과를 남긴다.
+            self.run_repository.update_run(
+                ctx.run_id,
+                status=AgentRunStatus.cancelled,
+                current_step=None,
+                completed_at=utc_now(),
+            )
+            ctx.event_bus.emit(
+                AgentEventType.run_completed,
+                "사용자가 실행을 중지했습니다.",
+                {"status": AgentRunStatus.cancelled.value},
+            )
+            ctx.checkpoint_store.save(state)
+            clear_cancel(ctx.run_id)
+            return
         except Exception as exc:
             self.run_repository.update_run(
                 ctx.run_id,

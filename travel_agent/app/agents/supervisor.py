@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
+from travel_agent.app.agent_core.cancellation import RunCancelled, is_cancelled
 from travel_agent.app.agents.accommodation import AccommodationAgent
 from travel_agent.app.agents.budget import BudgetAgent
 from travel_agent.app.agents.checklist import ChecklistAgent
@@ -689,6 +690,7 @@ class TravelSupervisorAgent:
         output_summary,
         tool_calls: list[dict] | None = None,
     ):
+        self._check_cancel(recorder)
         step_id = recorder.start_step(agent_name, input_summary) if recorder else None
         try:
             result = action()
@@ -699,6 +701,12 @@ class TravelSupervisorAgent:
             if recorder and step_id:
                 recorder.fail_step(step_id, str(exc))
             raise
+
+    @staticmethod
+    def _check_cancel(recorder: AgentRunRecorder | None) -> None:
+        """사용자가 중지를 요청했으면 단계 시작 전에 파이프라인을 빠져나온다(협조적 취소)."""
+        if is_cancelled(getattr(recorder, "run_id", None)):
+            raise RunCancelled()
 
     def _run_parallel(self, recorder: AgentRunRecorder | None, specs: list) -> None:
         """서로 독립인 에이전트 작업들을 동시에 실행한다(가장 느린 단계의 벽시계 단축).
@@ -711,6 +719,7 @@ class TravelSupervisorAgent:
         runnable = [s for s in specs if s is not None]
         if not runnable:
             return
+        self._check_cancel(recorder)
         step_ids = [recorder.start_step(s[0], s[1]) if recorder else None for s in runnable]
         errors: list[Exception | None] = [None] * len(runnable)
         with ThreadPoolExecutor(max_workers=len(runnable)) as executor:
