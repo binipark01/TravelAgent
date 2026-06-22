@@ -10,6 +10,7 @@ from travel_agent.app.llm.curator import (
     curate_city_pois,
     curate_companion_cities,
     curate_nearby,
+    curate_stay_areas,
 )
 from travel_agent.app.llm.itinerary_arranger import ArrangedDay, arrange_itinerary
 from travel_agent.app.providers.base import RoutesProvider
@@ -62,9 +63,12 @@ class RouteAgent:
         attractions, restaurants, companion_days = self._merge_companion_cities(
             state, days_count, attractions, restaurants
         )
+        # 숙소는 아직 미확정이므로, 추천 숙박 구역(도시 메인 부근)을 일정의 기준점으로 삼는다
+        # → 첫날 도착·마지막날 출국을 그 근처로, 매일 그 구역에서 너무 멀어지지 않게.
+        base_area = self._base_area(state.selected_destination)
 
-        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교·동반도시 포함) 그걸 쓰고,
-        # 비활성/실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
+        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교·동반도시·숙소기준 포함)
+        # 그걸 쓰고, 비활성/실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
         arrangement = arrange_itinerary(
             state.selected_destination or "여행지",
             days_count=days_count,
@@ -75,6 +79,7 @@ class RouteAgent:
             weather_by_day=weather_by_day,
             nearby_options=nearby_options,
             companion_days=companion_days or None,
+            base_area=base_area,
         )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
@@ -331,6 +336,17 @@ class RouteAgent:
         if not guide:
             return []
         return [dest.name for dest in guide.destinations][:6]
+
+    @staticmethod
+    def _base_area(destination: str | None) -> str | None:
+        """일정의 기준점 = 추천 숙박 구역 1순위(도시 메인 부근). curate_stay_areas는 캐시되어
+        StayAreaAgent와 결과를 공유하므로(웹검색 1회), 일정과 숙박 추천이 같은 구역을 본다."""
+        if not destination:
+            return None
+        guide = curate_stay_areas(destination)
+        if guide and guide.areas:
+            return guide.areas[0].name
+        return None
 
     def _merge_companion_cities(
         self,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from travel_agent.app.llm import curator
-from travel_agent.app.llm.itinerary_arranger import _multicity_block
+from travel_agent.app.llm.itinerary_arranger import _anchor_block, _multicity_block
 
 
 def test_companion_disabled_returns_empty() -> None:
@@ -53,3 +53,13 @@ def test_multicity_block_describes_city_split() -> None:
     # 동반 도시 없으면 빈 문자열(기존 단일 도시 프롬프트 그대로).
     assert _multicity_block("오사카", None) == ""
     assert _multicity_block("오사카", {}) == ""
+
+
+def test_anchor_block_uses_base_area() -> None:
+    block = _anchor_block("난바·신사이바시", 4)
+    assert "난바·신사이바시" in block
+    assert "첫날" in block  # 첫날 도착·숙소 근처
+    assert "마지막 날" in block  # 출국일 흐름
+    # 기준 구역이 없으면 빈 문자열(기존 동작 유지).
+    assert _anchor_block(None, 4) == ""
+    assert _anchor_block("", 4) == ""

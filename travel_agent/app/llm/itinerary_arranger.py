@@ -92,6 +92,25 @@ def _multicity_block(base_city: str, companion_days: dict[str, int] | None) -> s
     )
 
 
+def _anchor_block(base_area: str | None, days_count: int) -> str:
+    """숙소(미확정)를 대신해 추천 숙박 구역=도시 메인 부근을 일정의 기준점으로 잡는다."""
+    if not base_area:
+        return ""
+    last = (
+        " 마지막 날은 짐을 찾아 공항으로 가야 하니, 숙소 근처에서 가볍게 2~3곳만 보고"
+        " 출국하는 흐름으로 짜라."
+        if days_count >= 2
+        else ""
+    )
+    return (
+        "\n숙소는 아직 정해지지 않았으니 여행자들이 보통 묵는 "
+        f"'{base_area}' 일대를 본거지(기준점)로 삼아라. 첫날은 공항 도착·체크인 뒤라 숙소 "
+        "근처(그 일대)에서 가벼운 2~3곳으로 시작하고, 매일 동선이 본거지에서 너무 멀어지지 "
+        "않게(먼 구역·근교는 중간 날에) 배치하라."
+        f"{last}\n"
+    )
+
+
 def _nearby_block(nearby_options: list[str] | None) -> str:
     if not nearby_options:
         return ""
@@ -116,6 +135,7 @@ def arrange_itinerary(
     weather_by_day: dict[int, str] | None = None,
     nearby_options: list[str] | None = None,
     companion_days: dict[str, int] | None = None,
+    base_area: str | None = None,
 ) -> ArrangedItinerary | None:
     """관광지·식당을 날짜별 동선으로 배치한다. 비활성/실패 시 None."""
     if not _enabled() or days_count < 1 or not attractions:
@@ -149,6 +169,7 @@ def arrange_itinerary(
         "남기지 마라(시내 날은 4~5곳을 유지). 첫날은 도착, 마지막 날은 출국이라 약간 가벼워도 "
         "되지만 그래도 출발 전 가벼운 2~3곳은 넣어라.\n"
         f"{_weather_block(weather_by_day)}"
+        f"{_anchor_block(base_area, days_count)}"
         f"{_multicity_block(destination, companion_days)}"
         f"{_nearby_block(nearby_options)}\n"
         f"[관광지]\n{_pool_block(attractions, 18)}\n\n"
