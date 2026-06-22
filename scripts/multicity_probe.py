@@ -71,9 +71,17 @@ def probe(city: str) -> str:
         # 접두사로 등장하지 않으면 단일 도시(동반 없음)로 본다 — 파리 구역명 오탐 방지.
         base_first = base.split(",")[0].strip().lower()
         multi = any((a or "").strip().lower().startswith(base_first) for a in areas)
-        companions = sorted(
-            {c for c in day_cities if c != "?" and not c.startswith("근교") and c.lower() != base_first}
-        ) if multi else []
+        companions = (
+            sorted(
+                {
+                    c
+                    for c in day_cities
+                    if c != "?" and not c.startswith("근교") and c.lower() != base_first
+                }
+            )
+            if multi
+            else []
+        )
         nearby_days = [c for c in day_cities if c.startswith("근교")]
         # 품질 점검
         all_titles: list[str] = []

@@ -31,8 +31,10 @@ def main() -> None:
         print(f"  관광지 {len(pois.attractions)} / 식당 {len(pois.restaurants)}")
         print("  [관광지 유형]", [a.type for a in pois.attractions])
         print("  [식당 유형  ]", [r.type for r in pois.restaurants])
-        print("  [관광지 출처]", sorted({host(a.metadata.source_ref.source_url) for a in pois.attractions}))
-        print("  [식당 출처  ]", sorted({host(r.metadata.source_ref.source_url) for r in pois.restaurants}))
+        attr_hosts = sorted({host(a.metadata.source_ref.source_url) for a in pois.attractions})
+        rest_hosts = sorted({host(r.metadata.source_ref.source_url) for r in pois.restaurants})
+        print("  [관광지 출처]", attr_hosts)
+        print("  [식당 출처  ]", rest_hosts)
         booked = [a.title for a in pois.attractions if a.booking_required]
         print("  [예약필요   ]", booked)
 
