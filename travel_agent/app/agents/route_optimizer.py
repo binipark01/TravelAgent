@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 from math import ceil
 
@@ -56,6 +57,9 @@ class RouteAgent:
         # 날씨를 먼저 받아 배치에 반영하고(비→실내, 맑음→야외) 표시에도 재사용한다.
         weather = self._fetch_weather(state, brief, days_count)
         weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
+        # 근교·숙박구역·동반도시 판단은 서로 독립인 웹검색이라, 직렬로 줄줄이 기다리지 말고
+        # 먼저 동시에 돌려 캐시를 데운다 → 아래 호출들은 캐시 히트로 즉시(일정 대기시간 단축).
+        self._prefetch_route_lookups(state.selected_destination, days_count)
         # 근교 당일치기 후보 — 일정이 여유로우면 배치기가 하루를 근교로 배정한다(빡빡하면 생략).
         nearby_options = self._nearby_options(state.selected_destination)
         # 사실상 같이 가는 핵심 도시(오사카↔교토 등)가 있으면 그 도시 실제 명소를 풀에 합쳐
@@ -336,6 +340,26 @@ class RouteAgent:
         if not guide:
             return []
         return [dest.name for dest in guide.destinations][:6]
+
+    @staticmethod
+    def _prefetch_route_lookups(destination: str | None, days_count: int) -> None:
+        """일정 생성 직전에 필요한 독립 웹검색(근교·숙박구역·동반도시 판단)을 동시에 돌려
+        캐시를 데운다. 직렬 합산(~2~3분) → 가장 느린 하나(~30~60초)로 단축. 실패는 무시
+        (본 호출에서 폴백)."""
+        if not destination:
+            return
+        tasks = (
+            lambda: curate_nearby(destination),
+            lambda: curate_stay_areas(destination),
+            lambda: curate_companion_cities(destination, days_count),
+        )
+        with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+            futures = [executor.submit(task) for task in tasks]
+            for future in futures:
+                try:
+                    future.result()
+                except Exception:  # noqa: BLE001 - 사전 조회 실패는 본 호출에서 폴백
+                    pass
 
     @staticmethod
     def _base_area(destination: str | None) -> str | None:
