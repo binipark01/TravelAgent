@@ -72,7 +72,9 @@ export function PlanCards({
     return map
   }, [pois, activities])
 
+  const hub = tickets?.hub || plan.selected_destination || ''
   const hasAny =
+    !!hub ||
     flights.length > 0 ||
     hotels.length > 0 ||
     pois.length > 0 ||
@@ -86,8 +88,6 @@ export function PlanCards({
     nearby != null ||
     tickets != null
   if (!hasAny) return null
-
-  const hub = tickets?.hub || plan.selected_destination || ''
   // 지도를 위로 스크롤해 바뀐 위치를 바로 보이게 한다.
   const scrollToMap = () =>
     requestAnimationFrame(() =>
@@ -136,11 +136,13 @@ export function PlanCards({
   return (
     <MapFocusContext.Provider value={focusValue}>
       <div className="assistant-detail-cards plan-cards">
-        {tickets != null && (
+        {hub && (
           <Suspense fallback={<div className="card map-loading">지도 불러오는 중…</div>}>
             <MapCard
-              key={tickets.hub ?? 'map'}
-              guide={tickets}
+              key={hub}
+              hub={hub}
+              hubLat={tickets?.hub_lat}
+              hubLng={tickets?.hub_lng}
               focus={focus}
               onReset={() => setFocus(null)}
             />

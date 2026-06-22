@@ -67,6 +67,8 @@ function planHasContent(plan?: TripPlanState | null): boolean {
   const pois = (plan.poi_candidates ?? []).filter((o) => !o.metadata.source_ref.is_mock)
   const activities = (plan.activity_options ?? []).filter((o) => !o.metadata.source_ref.is_mock)
   return (
+    // 목적지만 정해져도 지도를 띄우도록(나머지 완성 전에도) 캔버스를 연다.
+    !!plan.selected_destination ||
     flights.length > 0 ||
     hotels.length > 0 ||
     pois.length > 0 ||

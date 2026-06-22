@@ -1,6 +1,5 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import { useEffect, useRef, useState } from 'react'
-import type { TransportTicketGuide } from '../types/trip'
 import type { MapFocus } from './MapFocusContext'
 
 // 같은 키를 JS API에도 사용(프로젝트에 Maps JavaScript API + 결제가 켜져 있어야 함).
@@ -25,8 +24,9 @@ let authFailed = false
 
 /** 임베드(iframe) src — JS API를 못 쓸 때 폴백. 장소/동선/OSM 처리. */
 function buildEmbedSrc(
-  guide: TransportTicketGuide,
   hub: string,
+  hubLat: number | null | undefined,
+  hubLng: number | null | undefined,
   focus?: MapFocus | null,
 ): { src: string | null; kind: string } {
   const focusCoords = focus?.lat != null && focus?.lng != null
@@ -50,8 +50,8 @@ function buildEmbedSrc(
       }
     }
   }
-  const lat = focusCoords ? (focus?.lat as number) : guide.hub_lat
-  const lng = focusCoords ? (focus?.lng as number) : guide.hub_lng
+  const lat = focusCoords ? (focus?.lat as number) : hubLat
+  const lng = focusCoords ? (focus?.lng as number) : hubLng
   if (lat != null && lng != null) {
     const d = focus ? 0.03 : 0.12
     const bbox = `${lng - d},${lat - d * 0.7},${lng + d},${lat + d * 0.7}`
@@ -64,15 +64,20 @@ function buildEmbedSrc(
 }
 
 /**
- * 목적지 지도 카드. 기본은 Google Maps JavaScript API(스크롤만으로 확대/축소).
- * 키가 없거나 JS API 인증이 실패하면 자동으로 임베드 iframe으로 폴백한다.
+ * 목적지 지도 카드. 목적지(hub)만 정해지면 바로 띄운다(교통권 등 나머지 완성 전에도).
+ * 기본은 Google Maps JavaScript API(스크롤만으로 확대/축소). 키가 없거나 JS API 인증이
+ * 실패하면 자동으로 임베드 iframe으로 폴백한다.
  */
 export function MapCard({
-  guide,
+  hub,
+  hubLat,
+  hubLng,
   focus,
   onReset,
 }: {
-  guide?: TransportTicketGuide | null
+  hub: string
+  hubLat?: number | null
+  hubLng?: number | null
   focus?: MapFocus | null
   onReset?: () => void
 }) {
@@ -87,12 +92,11 @@ export function MapCard({
   const [ready, setReady] = useState(false)
   const [jsFailed, setJsFailed] = useState(authFailed)
 
-  const hub = guide?.hub || guide?.destination_country || ''
   const useJs = !!GMAPS_KEY && !jsFailed
 
   // 지도 생성(1회) + JS 인증 실패 시 임베드로 폴백.
   useEffect(() => {
-    if (!useJs || !mapDivRef.current || !guide) return
+    if (!useJs || !mapDivRef.current || !hub) return
     let cancelled = false
     ;(window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
       authFailed = true
@@ -104,8 +108,8 @@ export function MapCard({
         const o = objs.current
         if (!o.map) {
           const center =
-            guide.hub_lat != null && guide.hub_lng != null
-              ? { lat: guide.hub_lat, lng: guide.hub_lng }
+            hubLat != null && hubLng != null
+              ? { lat: hubLat, lng: hubLng }
               : { lat: 35.681, lng: 139.767 }
           o.map = new google.maps.Map(mapDivRef.current, {
             center,
@@ -119,7 +123,7 @@ export function MapCard({
           o.directions = new google.maps.DirectionsService()
           o.renderer = new google.maps.DirectionsRenderer()
           o.marker = new google.maps.Marker({ map: o.map, position: center })
-          if (guide.hub_lat == null && hub) {
+          if (hubLat == null && hub) {
             o.geocoder.geocode({ address: hub }, (res, status) => {
               if (status === 'OK' && res && res[0] && o.map && o.marker) {
                 o.map.setCenter(res[0].geometry.location)
@@ -134,7 +138,7 @@ export function MapCard({
     return () => {
       cancelled = true
     }
-  }, [useJs, guide, hub])
+  }, [useJs, hub, hubLat, hubLng])
 
   // focus 적용: 동선이면 경로, 장소면 핀+이동, 없으면 허브.
   useEffect(() => {
@@ -178,7 +182,7 @@ export function MapCard({
     }
   }, [focus, ready, hub])
 
-  if (!guide) return null
+  if (!hub) return null
   const heading = focus ? focus.label : `${hub} 지도`
 
   const headerRow = (
@@ -196,7 +200,7 @@ export function MapCard({
   )
 
   if (!useJs) {
-    const { src, kind } = buildEmbedSrc(guide, hub, focus)
+    const { src, kind } = buildEmbedSrc(hub, hubLat, hubLng, focus)
     if (!src) return null
     return (
       <section className="card map-card" id="trip-map-card">
