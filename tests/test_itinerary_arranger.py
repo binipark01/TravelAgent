@@ -45,6 +45,18 @@ def _poi(title: str, area: str, *, rating: float = 4.3) -> POIOption:
     )
 
 
+def test_community_course_disabled_returns_none() -> None:
+    # conftest: ENABLE_LIVE_LLM=false → 웹검색 비활성 → None(RouteAgent가 배치기로 폴백).
+    from travel_agent.app.llm.itinerary_arranger import curate_community_course
+
+    assert (
+        curate_community_course(
+            "오사카", days_count=3, interests=["맛집"], start_date=date(2026, 7, 3)
+        )
+        is None
+    )
+
+
 def test_arrange_disabled_returns_none() -> None:
     # conftest의 autouse 픽스처가 ENABLE_LIVE_LLM=false → 배치기 비활성 → None.
     assert (

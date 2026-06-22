@@ -126,6 +126,119 @@ def _nearby_block(nearby_options: list[str] | None) -> str:
     )
 
 
+def _parse_days(raw_days: object, days_count: int) -> ArrangedItinerary | None:
+    """LLM이 준 days 배열을 ArrangedItinerary로 파싱(arranger·커뮤니티 코스 공용)."""
+    if not isinstance(raw_days, list) or not raw_days:
+        return None
+    days: list[ArrangedDay] = []
+    for index, raw in enumerate(raw_days, start=1):
+        if not isinstance(raw, dict):
+            continue
+        raw_stops = raw.get("stops")
+        if not isinstance(raw_stops, list):
+            continue
+        stops: list[ArrangedStop] = []
+        for raw_stop in raw_stops:
+            if not isinstance(raw_stop, dict):
+                continue
+            title = raw_stop.get("title")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            stops.append(
+                ArrangedStop(
+                    title=title.strip(),
+                    duration_min=_coerce_int(raw_stop.get("duration_min"), 90, low=30, high=240),
+                    travel_to_next_min=_coerce_int(
+                        raw_stop.get("travel_to_next_min"), 0, low=0, high=240
+                    ),
+                    travel_mode=(raw_stop.get("travel_mode") or "이동").strip() or "이동",
+                )
+            )
+        if not stops:
+            continue
+        days.append(
+            ArrangedDay(
+                day=_coerce_int(raw.get("day"), index, low=1, high=days_count),
+                area=(raw.get("area") or "").strip() or None,
+                note=(raw.get("note") or "").strip() or None,
+                stops=stops,
+                lunch=(raw.get("lunch") or "").strip() or None,
+                dinner=(raw.get("dinner") or "").strip() or None,
+            )
+        )
+    if not days:
+        return None
+    return ArrangedItinerary(days=days)
+
+
+_COMMUNITY_COURSE_CACHE: dict[str, ArrangedItinerary] = {}
+
+
+def clear_community_cache() -> None:
+    _COMMUNITY_COURSE_CACHE.clear()
+
+
+def curate_community_course(
+    destination: str,
+    *,
+    days_count: int,
+    interests: list[str] | None,
+    start_date: date | None,
+) -> ArrangedItinerary | None:
+    """디시·네이버 카페·블로그의 '실제 다녀온 코스 후기'를 웹검색해 day-by-day 일정을 종합한다.
+
+    참고 카드가 아니라 일정 구조 자체를 실후기 코스에서 가져온다(이후 RouteAgent가 평점·이동
+    시간·야경 시간대 규칙으로 살을 붙임). 웹검색 비활성/실패/코스 못 찾으면 None → 기존
+    arrange_itinerary로 폴백.
+    """
+    settings = get_settings()
+    if (
+        not settings.enable_live_llm
+        or not settings.codex_oauth_enable_web_search
+        or not codex_brief_available(settings.codex_cli_command)
+        or days_count < 1
+    ):
+        return None
+    interest_text = ", ".join(i for i in (interests or []) if i and i.strip()) or "제약 없음"
+    cache_key = f"{destination.strip().lower()}|{days_count}|{interest_text}"
+    if cache_key in _COMMUNITY_COURSE_CACHE:
+        return _COMMUNITY_COURSE_CACHE[cache_key]
+    season = f" 여행 시기는 {start_date.year}년 {start_date.month}월경." if start_date else ""
+
+    prompt = (
+        "너는 한국인 여행자를 위한 일정 큐레이터다. live web search로 디시인사이드 해외여행 "
+        "갤러리(gall.dcinside.com), 네이버 카페 여행 후기, 네이버 블로그에서 "
+        f"'{destination} {days_count}일(또는 비슷한 기간) 코스/일정 후기' 글들을 여러 개 찾아, "
+        "실제 다녀온 사람들의 대표적인 day-by-day 코스를 종합하라. 광고성 패키지·여행사 글보다 "
+        f"진짜 후기를 우선한다. 여행자 취향: {interest_text}.{season}\n"
+        "같은 날엔 지리적으로 가까운 곳끼리 묶어 되돌아가지 않는 순서로, 연속 방문지 사이 대략 "
+        "이동시간(분)·교통수단을 추정하고, 점심·저녁 식당도 그날 동선 근처로 골라라. "
+        "실제 존재하는 장소만, 후기에서 자주 묶이는 동선을 반영하라.\n"
+        "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
+        "{\n"
+        '  "days": [{"day":1, "area":"그날 중심 지역", "note":"실후기에서 자주 가는 동선 한줄",\n'
+        '     "stops":[{"title":"정확한 장소명(한글, 원어 괄호)", "duration_min":90,\n'
+        '       "travel_to_next_min":15, "travel_mode":"지하철/도보/버스"}],\n'
+        '     "lunch":"식당명 또는 null", "dinner":"식당명 또는 null"}]\n'
+        "}\n"
+        f"{days_count}일 전부 채우고, 마지막 stop의 travel_to_next_min은 0."
+    )
+    data = run_codex_json(
+        prompt,
+        command=settings.codex_cli_command,
+        model=settings.codex_oauth_model,
+        reasoning_effort=settings.codex_reasoning_effort,
+        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 200),
+        enable_web_search=True,
+    )
+    if not isinstance(data, dict):
+        return None
+    course = _parse_days(data.get("days"), days_count)
+    if course is not None:
+        _COMMUNITY_COURSE_CACHE[cache_key] = course
+    return course
+
+
 def arrange_itinerary(
     destination: str,
     *,
@@ -200,48 +313,4 @@ def arrange_itinerary(
     )
     if not isinstance(data, dict):
         return None
-    raw_days = data.get("days")
-    if not isinstance(raw_days, list) or not raw_days:
-        return None
-
-    days: list[ArrangedDay] = []
-    for index, raw in enumerate(raw_days, start=1):
-        if not isinstance(raw, dict):
-            continue
-        raw_stops = raw.get("stops")
-        if not isinstance(raw_stops, list):
-            continue
-        stops: list[ArrangedStop] = []
-        for raw_stop in raw_stops:
-            if not isinstance(raw_stop, dict):
-                continue
-            title = raw_stop.get("title")
-            if not isinstance(title, str) or not title.strip():
-                continue
-            stops.append(
-                ArrangedStop(
-                    title=title.strip(),
-                    duration_min=_coerce_int(
-                        raw_stop.get("duration_min"), 90, low=30, high=240
-                    ),
-                    travel_to_next_min=_coerce_int(
-                        raw_stop.get("travel_to_next_min"), 0, low=0, high=240
-                    ),
-                    travel_mode=(raw_stop.get("travel_mode") or "이동").strip() or "이동",
-                )
-            )
-        if not stops:
-            continue
-        days.append(
-            ArrangedDay(
-                day=_coerce_int(raw.get("day"), index, low=1, high=days_count),
-                area=(raw.get("area") or "").strip() or None,
-                note=(raw.get("note") or "").strip() or None,
-                stops=stops,
-                lunch=(raw.get("lunch") or "").strip() or None,
-                dinner=(raw.get("dinner") or "").strip() or None,
-            )
-        )
-    if not days:
-        return None
-    return ArrangedItinerary(days=days)
+    return _parse_days(data.get("days"), days_count)

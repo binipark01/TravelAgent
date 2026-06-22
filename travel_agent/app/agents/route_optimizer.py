@@ -13,7 +13,11 @@ from travel_agent.app.llm.curator import (
     curate_nearby,
     curate_stay_areas,
 )
-from travel_agent.app.llm.itinerary_arranger import ArrangedDay, arrange_itinerary
+from travel_agent.app.llm.itinerary_arranger import (
+    ArrangedDay,
+    arrange_itinerary,
+    curate_community_course,
+)
 from travel_agent.app.providers.base import RoutesProvider
 from travel_agent.app.schemas.common import Location, Money
 from travel_agent.app.schemas.itinerary import (
@@ -54,37 +58,39 @@ class RouteAgent:
         attractions = self._apply_edits(state.activity_options or state.poi_candidates, brief)
         restaurants = self._apply_edits(state.poi_candidates, brief)
 
-        # 날씨를 먼저 받아 배치에 반영하고(비→실내, 맑음→야외) 표시에도 재사용한다.
+        # 날씨를 먼저 받아 표시에 재사용한다.
         weather = self._fetch_weather(state, brief, days_count)
         weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
-        # 근교·숙박구역·동반도시 판단은 서로 독립인 웹검색이라, 직렬로 줄줄이 기다리지 말고
-        # 먼저 동시에 돌려 캐시를 데운다 → 아래 호출들은 캐시 히트로 즉시(일정 대기시간 단축).
-        self._prefetch_route_lookups(state.selected_destination, days_count)
-        # 근교 당일치기 후보 — 일정이 여유로우면 배치기가 하루를 근교로 배정한다(빡빡하면 생략).
-        nearby_options = self._nearby_options(state.selected_destination)
-        # 사실상 같이 가는 핵심 도시(오사카↔교토 등)가 있으면 그 도시 실제 명소를 풀에 합쳐
-        # 별도의 날로 편성한다(날 수가 충분할 때만, LLM 웹검색 판단).
-        attractions, restaurants, companion_days = self._merge_companion_cities(
-            state, days_count, attractions, restaurants
-        )
-        # 숙소는 아직 미확정이므로, 추천 숙박 구역(도시 메인 부근)을 일정의 기준점으로 삼는다
-        # → 첫날 도착·마지막날 출국을 그 근처로, 매일 그 구역에서 너무 멀어지지 않게.
-        base_area = self._base_area(state.selected_destination)
 
-        # LLM이 지리적 근접성으로 동선을 배치하면(이동시간·날씨·근교·동반도시·숙소기준 포함)
-        # 그걸 쓰고, 비활성/실패 시 기존 휴리스틱(area 묶음 + 고정 시간표)으로 폴백한다.
-        arrangement = arrange_itinerary(
+        # 1순위: 디시·네이버카페·블로그의 '실제 다녀온 코스 후기'로 일정 구조를 가져온다.
+        # 진짜 사람들의 동선이라 시간대(야경=밤)·숙소근처 시작이 자연스럽다. 못 찾으면(또는
+        # 비활성) 아래 LLM 배치기로 폴백한다.
+        arrangement = curate_community_course(
             state.selected_destination or "여행지",
             days_count=days_count,
-            attractions=attractions,
-            restaurants=restaurants,
-            pace=brief.pace,
+            interests=brief.must_include,
             start_date=brief.start_date,
-            weather_by_day=weather_by_day,
-            nearby_options=nearby_options,
-            companion_days=companion_days or None,
-            base_area=base_area,
         )
+        if arrangement is None:
+            # 폴백: 근교·숙박구역·동반도시(병렬 프리페치) + LLM 배치기.
+            self._prefetch_route_lookups(state.selected_destination, days_count)
+            nearby_options = self._nearby_options(state.selected_destination)
+            attractions, restaurants, companion_days = self._merge_companion_cities(
+                state, days_count, attractions, restaurants
+            )
+            base_area = self._base_area(state.selected_destination)
+            arrangement = arrange_itinerary(
+                state.selected_destination or "여행지",
+                days_count=days_count,
+                attractions=attractions,
+                restaurants=restaurants,
+                pace=brief.pace,
+                start_date=brief.start_date,
+                weather_by_day=weather_by_day,
+                nearby_options=nearby_options,
+                companion_days=companion_days or None,
+                base_area=base_area,
+            )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
                 arrangement, attractions, restaurants, brief, days_count, state
