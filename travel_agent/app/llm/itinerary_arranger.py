@@ -50,9 +50,11 @@ def _enabled() -> bool:
 def _pool_block(pool: list[POIOption], limit: int) -> str:
     lines = []
     for poi in pool[:limit]:
-        area = f" [{poi.area}]" if poi.area else ""
+        # 유형(전망대·야경·시장 등)을 함께 보여줘 배치기가 시간대를 맞출 수 있게 한다.
+        tag = "·".join(t for t in (poi.type, poi.area) if t)
+        tag = f" [{tag}]" if tag else ""
         dur = poi.recommended_duration_minutes or 90
-        lines.append(f"- {poi.title}{area} (~{dur}분)")
+        lines.append(f"- {poi.title}{tag} (~{dur}분)")
     return "\n".join(lines) if lines else "(없음)"
 
 
@@ -168,6 +170,10 @@ def arrange_itinerary(
         "각 날의 곳수를 비슷하게 균형 있게 분배하라 — 한 날에 몰아넣고 다른 날을 1~2곳만 "
         "남기지 마라(시내 날은 4~5곳을 유지). 첫날은 도착, 마지막 날은 출국이라 약간 가벼워도 "
         "되지만 그래도 출발 전 가벼운 2~3곳은 넣어라.\n"
+        "시간대 적합성을 반드시 지켜라(목록의 [유형] 참고): 야경·전망대·전망·나이트뷰·바·"
+        "나이트라이프는 그날 동선의 '마지막'(해질녘~저녁)에 두고, 절대 오전에 넣지 마라. "
+        "새벽시장·일출 명소는 오전 앞쪽에, 박물관·미술관 등 실내는 한낮이나 비 오는 시간대에 "
+        "배치하라. 같은 area 안에서는 이 시간대 규칙이 지리 순서보다 우선이다.\n"
         f"{_weather_block(weather_by_day)}"
         f"{_anchor_block(base_area, days_count)}"
         f"{_multicity_block(destination, companion_days)}"
