@@ -296,6 +296,8 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
         f"'{destination}'에서 기차·버스·렌터카로 닿는 **근교 당일치기** 명소를 종합 추천하라.\n"
         f"{source_hints_block(destination)}\n"
         "각 명소의 대략 이동시간·교통수단·볼거리를 적고, 근거 출처 URL을 최소 1개 붙여라. "
+        "travel_time은 대표 경로 하나로 짧게(예: 'JR 약 35분', '버스 1시간'). 여러 경로·"
+        "범위를 길게 나열하지 마라(8자 안팎). transport도 한 수단만 간단히.\n"
         "실제 존재하는 곳만, 지어내지 마라. 적당한 근교가 거의 없으면 destinations를 빈 배열로.\n\n"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
         "{\n"

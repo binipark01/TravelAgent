@@ -27,11 +27,13 @@ export function NearbyCard({ guide }: { guide?: NearbyGuide | null }) {
               <strong className={trig.className} {...trig.interactive}>
                 {cleanDisplayText(dest.name)}
               </strong>
-              <span className="nearby-time">🚆 {cleanDisplayText(dest.travel_time)}</span>
+              {dest.best_for && <span className="nearby-chip">{dest.best_for}</span>}
             </div>
             <div className="nearby-item__meta">
-              <span className="nearby-transport">{dest.transport}</span>
-              {dest.best_for && <span className="nearby-chip">{dest.best_for}</span>}
+              <span className="nearby-time">🚆 {cleanDisplayText(dest.travel_time)}</span>
+              {dest.transport && (
+                <span className="nearby-transport">· {cleanDisplayText(dest.transport)}</span>
+              )}
             </div>
             {dest.highlights.length > 0 && (
               <div className="nearby-highlights">
