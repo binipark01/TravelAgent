@@ -253,7 +253,7 @@ def curate_city_pois(
         '  "restaurants": [{"name":"", "cuisine":"스시/라멘/이자카야 등", "area":"", '
         '"why":"", "rating":4.4, "sources":["url"]}]\n'
         "}\n"
-        "관광지 6~10곳, 맛집 6~10곳."
+        "관광지 10~14곳, 맛집 8~12곳(여러 날 일정을 하루 4~5곳으로 채우려면 넉넉히 필요)."
     )
     data = _run(prompt, settings)
     if not isinstance(data, dict):
