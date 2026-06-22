@@ -1798,10 +1798,9 @@ legend {
   gap: 12px;
 }
 
-/* 일정: 하루 카드를 2열로 깔아 세로 길이를 절반으로(불균등하면 늘이지 않음) */
+/* 일정: 하루 카드를 세로 1단으로(날짜 순서대로 읽기 쉽고, 곳수 차이로 인한 빈칸 없음) */
 .day-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
+  grid-template-columns: 1fr;
 }
 
 .day-card,
