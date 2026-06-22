@@ -1798,9 +1798,19 @@ legend {
   gap: 12px;
 }
 
-/* 일정: 하루 카드를 세로 1단으로(날짜 순서대로 읽기 쉽고, 곳수 차이로 인한 빈칸 없음) */
+/* 일정: 두 열에 날짜를 번갈아 넣어(왼=1·3·5, 오=2·4) 각 열이 빈칸 없이 위로 꽉 차게 한다.
+   카드 높이를 늘이지 않으니 짧은 날도 텅 비지 않고, 읽기는 행 순서(1·2 → 3·4 → 5) 그대로. */
 .day-list {
-  grid-template-columns: 1fr;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.day-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 .day-card,

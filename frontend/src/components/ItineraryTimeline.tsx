@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DayPlan, Itinerary } from '../types/itinerary'
 import { itinerarySummaryLabel } from '../utils/format'
 import { buildItineraryIcs, downloadText } from '../utils/ics'
@@ -16,6 +16,16 @@ export function ItineraryTimeline({
 }) {
   const [editing, setEditing] = useState(false)
   const editable = typeof onChange === 'function'
+
+  // 좁은 화면에선 1열(순서대로), 넓은 화면에선 2열(번갈아 배치)로 카드를 깐다.
+  const [twoCol, setTwoCol] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 860,
+  )
+  useEffect(() => {
+    const onResize = () => setTwoCol(window.innerWidth >= 860)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const handleDayChange = (dayIndex: number, nextDay: DayPlan) => {
     if (!itinerary || !onChange) return
@@ -72,14 +82,21 @@ export function ItineraryTimeline({
               : itinerarySummaryLabel(itinerary.summary)}
           </p>
           <div className="day-list">
-            {itinerary.days.map((day, index) => (
-              <DayPlanCard
-                day={day}
-                poiInfo={poiInfo}
-                editing={editing}
-                onDayChange={editing ? (next) => handleDayChange(index, next) : undefined}
-                key={`${day.day}-${day.date ?? 'no-date'}`}
-              />
+            {(twoCol ? [0, 1] : [0]).map((col) => (
+              <div className="day-col" key={col}>
+                {itinerary.days
+                  .map((day, index) => ({ day, index }))
+                  .filter(({ index }) => !twoCol || index % 2 === col)
+                  .map(({ day, index }) => (
+                    <DayPlanCard
+                      day={day}
+                      poiInfo={poiInfo}
+                      editing={editing}
+                      onDayChange={editing ? (next) => handleDayChange(index, next) : undefined}
+                      key={`${day.day}-${day.date ?? 'no-date'}`}
+                    />
+                  ))}
+              </div>
             ))}
           </div>
           {!editing && memoByDay.length > 0 && (
