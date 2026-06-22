@@ -348,7 +348,8 @@ class RouteAgent:
         companions = curate_companion_cities(destination, days_count)
         if not companions:
             return attractions, restaurants, {}
-        budget = max(0, days_count - 2)  # 본거지에 최소 2일 남긴다
+        # 본거지가 일정의 과반이 되게 동반 도시 일수 합을 제한(4일→1, 7일→2, 10일→3).
+        budget = max(1, (days_count - 1) // 3)
         city_days: dict[str, int] = {}
         for comp in companions:
             if budget <= 0:
