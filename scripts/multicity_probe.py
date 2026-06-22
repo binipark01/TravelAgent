@@ -67,9 +67,13 @@ def probe(city: str) -> str:
         days = itinerary.get("days") or []
         areas = [d.get("area") for d in days]
         day_cities = [_city_of(a) for a in areas]
+        # 멀티시티일 때만 배치기가 모든 날 area에 '도시 · 동네' 접두사를 붙인다. 본거지가
+        # 접두사로 등장하지 않으면 단일 도시(동반 없음)로 본다 — 파리 구역명 오탐 방지.
+        base_first = base.split(",")[0].strip().lower()
+        multi = any((a or "").strip().lower().startswith(base_first) for a in areas)
         companions = sorted(
-            {c for c in day_cities if c != "?" and not c.startswith("근교") and base not in c and c not in base}
-        )
+            {c for c in day_cities if c != "?" and not c.startswith("근교") and c.lower() != base_first}
+        ) if multi else []
         nearby_days = [c for c in day_cities if c.startswith("근교")]
         # 품질 점검
         all_titles: list[str] = []
