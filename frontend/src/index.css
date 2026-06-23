@@ -2667,6 +2667,9 @@ legend {
   .plan-cards > .card {
     grid-column: 1 / -1;
   }
+  .poi-list {
+    columns: 1;
+  }
 }
 
 /* 카드 공통 푸터 안내 — 항목마다 반복하지 않고 카드당 1번 */
@@ -2681,16 +2684,19 @@ legend {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 4px;
+  /* 후보 목록은 2단으로(순서가 엄격하지 않아 멀티컬럼이 빈칸 없이 꽉 참). 좁으면 1단. */
+  columns: 2;
+  column-gap: 8px;
 }
 .poi-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 7px 10px;
+  margin-bottom: 6px; /* 멀티컬럼엔 grid gap이 없어 항목 간격을 margin으로 */
   background: var(--surface-soft, rgba(148, 163, 184, 0.06));
   border-radius: 9px;
+  break-inside: avoid; /* 한 항목이 두 열에 쪼개지지 않게 */
 }
 .poi-row__top {
   display: flex;
