@@ -115,10 +115,7 @@ export function PlanCards({
   }
   const selectRoute = (route: MapRoutePick) => {
     const stops = route.stops.filter((stop) => stop.label)
-    if (stops.length < 2) {
-      if (stops[0]) selectPlace(stops[0])
-      return
-    }
+    if (stops.length < 1) return
     // 그날 지역(린쿠타운·간사이공항, 교토 등)으로 anchor. 도시 전체(hub)로 잡으면 '고디바 카페'
     // 같은 이름이 시내 다른 지점으로 찍혀 동선이 크게 우회한다. 좌표 있으면 좌표 우선.
     const region = (route.region || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
@@ -127,6 +124,28 @@ export function PlanCards({
         ? `${place.lat},${place.lng}`
         : [place.label, region || hub].filter(Boolean).join(', ')
     const queries = stops.map(routeQuery)
+    // 동선은 '숙소(본거지)에서 출발'하는 흐름으로 보여준다. 그날 첫 장소가 본거지 권역이
+    // 아니면(베르사유 같은 근교·먼 구역 가는 날) 본거지를 출발점으로 앞에 붙여, 숙소→목적지
+    // 이동이 한눈에 보이게 한다. 단 첫 장소가 공항이면(도착일) 그대로 둔다(공항→숙소 순서).
+    // 본거지는 그날 지역(region)이 아니라 도시(hub)로 지오코딩한다.
+    // 본거지명은 '오페라·그랑불바르(Opéra / …)'처럼 ·/·괄호가 섞여 지오코딩이 흔들리므로
+    // 괄호·구분자를 떼어 깔끔한 대표명만 쓴다.
+    const baseClean = (stayAreas?.areas?.[0]?.name || '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/[·/]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const baseKey = baseClean ? baseClean.split(' ')[0] : ''
+    const startsAtBase =
+      !!baseKey && (stops[0].label.includes(baseKey) || region.includes(baseKey))
+    const firstIsAirport = /공항|空港|airport/i.test(stops[0].label)
+    if (baseClean && !startsAtBase && !firstIsAirport) {
+      queries.unshift([baseClean, hub].filter(Boolean).join(', '))
+    }
+    if (queries.length < 2) {
+      selectPlace(stops[0])
+      return
+    }
     setFocus({
       label: route.label,
       route: {
