@@ -155,15 +155,19 @@ export function MapCard({
         waypoints: route.waypoints.map((w) => ({ location: w, stopover: true })),
         travelMode,
       })
-      o.directions?.route(request(google.maps.TravelMode.TRANSIT), (res, status) => {
-        if (status === 'OK' && res) {
-          o.renderer?.setDirections(res)
-          return
-        }
-        o.directions?.route(request(google.maps.TravelMode.WALKING), (alt, altStatus) => {
-          if (altStatus === 'OK' && alt) o.renderer?.setDirections(alt)
+      // 동선은 DRIVING으로 그린다. TRANSIT은 경유지(waypoints)를 지원하지 않아 3곳 이상이면
+      // INVALID_REQUEST로 실패하고, WALKING으로 떨어지면 간사이공항 같은 인공섬을 도보로
+      // 못 가 도심까지 100km 우회한다. DRIVING은 경유지·다리를 모두 처리해 지리적으로
+      // 정상인 선을 만든다. (실제 이동수단/소요시간은 일정 카드의 'JR n분·도보 n분'에 있음)
+      const modes = [google.maps.TravelMode.DRIVING, google.maps.TravelMode.WALKING]
+      const tryMode = (i: number) => {
+        if (i >= modes.length) return
+        o.directions?.route(request(modes[i]), (res, status) => {
+          if (status === 'OK' && res) o.renderer?.setDirections(res)
+          else tryMode(i + 1)
         })
-      })
+      }
+      tryMode(0)
       return
     }
     o.renderer?.setMap(null)

@@ -165,6 +165,9 @@ export function HomePage() {
     queryFn: () => listAgentRuns(20),
     staleTime: 30_000,
   })
+  // refetch는 안정적인 참조다. runsQuery 객체 전체를 deps에 넣으면 매 렌더마다 새 객체라
+  // effect가 무한 반복(setTurns→리렌더→effect…)되므로 refetch만 꺼내 쓴다.
+  const refetchRuns = runsQuery.refetch
 
   useEffect(() => {
     const detail = pollQuery.data
@@ -177,9 +180,9 @@ export function HomePage() {
       setPollingRunId(null)
       setActiveTurnId(null)
       // 방금 끝난 요청이 '이전 요청' 목록에 바로 보이도록 새로고침.
-      void runsQuery.refetch()
+      void refetchRuns()
     }
-  }, [pollQuery.data, activeTurnId, runsQuery])
+  }, [pollQuery.data, activeTurnId, refetchRuns])
 
   // 마운트 시: '최근 여행'에서 온 ?run=<id>이 있으면 그걸, 없으면 저장된 활성 run을
   // 서버에서 불러와 대화·캔버스를 복원하고 이어서 대화할 수 있게 한다.
