@@ -12,6 +12,9 @@ export interface MapPlacePick {
 export interface MapRoutePick {
   label: string
   stops: MapPlacePick[]
+  // 그날 지역(예: '린쿠타운·간사이공항'). 좌표 없는 장소를 도시 전체가 아니라 이 지역으로
+  // 지오코딩 anchor 해서, 같은 이름이 시내 다른 곳으로 잘못 찍히는 우회를 막는다.
+  region?: string | null
 }
 
 /** MapCard가 실제로 띄우는 포커스: 단일 장소(query/좌표) 또는 동선(route). */

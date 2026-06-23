@@ -119,7 +119,14 @@ export function PlanCards({
       if (stops[0]) selectPlace(stops[0])
       return
     }
-    const queries = stops.map(placeQuery)
+    // 그날 지역(린쿠타운·간사이공항, 교토 등)으로 anchor. 도시 전체(hub)로 잡으면 '고디바 카페'
+    // 같은 이름이 시내 다른 지점으로 찍혀 동선이 크게 우회한다. 좌표 있으면 좌표 우선.
+    const region = (route.region || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
+    const routeQuery = (place: MapPlacePick) =>
+      place.lat != null && place.lng != null
+        ? `${place.lat},${place.lng}`
+        : [place.label, region || hub].filter(Boolean).join(', ')
+    const queries = stops.map(routeQuery)
     setFocus({
       label: route.label,
       route: {

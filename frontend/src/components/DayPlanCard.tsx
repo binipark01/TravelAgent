@@ -203,7 +203,9 @@ export function DayPlanCard({
             <button
               type="button"
               className="day-route-btn"
-              onClick={() => focus.selectRoute({ label: `${day.day}일차 동선`, stops })}
+              onClick={() =>
+                focus.selectRoute({ label: `${day.day}일차 동선`, stops, region: day.area })
+              }
             >
               🗺️ 동선 보기
             </button>
