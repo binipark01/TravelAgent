@@ -322,11 +322,13 @@ class RouteAgent:
                 notes=poi.notes[:1],
                 feasibility_flags=[],
             )
-        # 풀에서 못 찾으면(드묾) 최소 정보로 만든다.
+        # 풀에서 못 찾으면(드묾) 최소 정보로 만든다. 공항(첫날 도착·마지막날 출국)은 관광지가
+        # 아니라 '공항'으로 표시한다.
+        is_airport = any(k in stop.title for k in ("공항", "空港", "airport", "Airport"))
         return ItineraryItem(
             item_id=new_id("item"),
             title=stop.title,
-            type="관광지",
+            type="공항" if is_airport else "관광지",
             location=Location(name=state.selected_destination or stop.title, area=None),
             start_time=start,
             end_time=end,
