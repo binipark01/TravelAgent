@@ -142,6 +142,14 @@ export function PlanCards({
     if (baseClean && !startsAtBase && !firstIsAirport) {
       queries.unshift([baseClean, hub].filter(Boolean).join(', '))
     }
+    // 그리고 다시 숙소로 돌아오는 것까지 — 마지막 장소가 본거지/공항(출국)이 아니면 본거지를
+    // 도착점으로 뒤에 붙여 동선을 숙소로 닫는다(왕복).
+    const lastLabel = stops[stops.length - 1].label
+    const endsAtBase = !!baseKey && (lastLabel.includes(baseKey) || region.includes(baseKey))
+    const lastIsAirport = /공항|空港|airport/i.test(lastLabel)
+    if (baseClean && !endsAtBase && !lastIsAirport) {
+      queries.push([baseClean, hub].filter(Boolean).join(', '))
+    }
     if (queries.length < 2) {
       selectPlace(stops[0])
       return
