@@ -82,6 +82,36 @@ def _weather_block(weather_by_day: dict[int, str] | None) -> str:
     )
 
 
+def _daylight_block(daylight_by_day: dict[int, tuple] | None) -> str:
+    """일차별 일몰 시각을 주고, 야외 경치는 일몰 전·야경은 일몰 후에 배치하게 한다."""
+    if not daylight_by_day:
+        return ""
+    lines = "\n".join(
+        f"  - {day}일차: 일출 {sr.strftime('%H:%M')}·일몰 {ss.strftime('%H:%M')}"
+        for day, (sr, ss) in sorted(daylight_by_day.items())
+    )
+    return (
+        "\n날짜별 일출·일몰(아래)을 반드시 반영하라. 야외 경치·전망(주간)·공원·해변·산책·"
+        "정원·주간 전망대는 **일몰 전(밝을 때)** 에 배치하고, 야경·나이트뷰·라이트업·일몰 명소는 "
+        "**일몰 직전~후**에 배치하라. 일몰 후에 '주간 경치·전망·공원·해변'을 넣지 마라(깜깜해 "
+        "아무것도 안 보인다). 해질녘 풍경·전망대 야경은 일몰 시각 근처로.\n"
+        f"{lines}\n"
+    )
+
+
+def _business_hours_block() -> str:
+    """업종별 일반 영업시간 상식을 준다(특정 POI 시간 날조 금지 — 업종 상식만)."""
+    return (
+        "\n업종별 영업시간 상식을 지켜 그 업종이 닫는 시간대에 넣지 마라(특정 가게 시간은 "
+        "지어내지 말고 업종 일반 상식만 적용):\n"
+        "  - 시장·어시장·수산시장·청과시장: 오전~이른 오후만(저녁 금지 — 보통 일찍 닫는다).\n"
+        "  - 박물관·미술관·전시관: 주간(대략 09~17시), 월요일 휴관이 잦다(가능하면 월요일 회피).\n"
+        "  - 신사·절·정원·공원: 낮 시간대.\n"
+        "  - 백화점·쇼핑몰·상점가: 저녁까지 OK.\n"
+        "  - 온천·이자카야·바·야시장: 저녁~밤.\n"
+    )
+
+
 def _multicity_block(base_city: str, companion_days: dict[str, int] | None) -> str:
     """동반 도시(예: 오사카의 교토)를 별도의 날로 묶어 배치하게 하는 지시."""
     if not companion_days:
@@ -192,6 +222,7 @@ def curate_community_course(
     days_count: int,
     interests: list[str] | None,
     start_date: date | None,
+    daylight_by_day: dict[int, tuple] | None = None,
 ) -> ArrangedItinerary | None:
     """디시·네이버 카페·블로그의 '실제 다녀온 코스 후기'를 웹검색해 day-by-day 일정을 종합한다.
 
@@ -244,6 +275,8 @@ def curate_community_course(
         "끝나야 한다. 특히 섬·근교 당일치기는 막배/막차 때문에 더 일찍 끝내고 곳수를 확 줄여라"
         "(욕심내지 마라 — 늦은 곳은 과감히 빼라). 22시를 넘길 것 같으면 반드시 곳수를 줄여 맞춰라. "
         "야경 명소만 22시 이후 허용한다.\n"
+        f"{_daylight_block(daylight_by_day)}"
+        f"{_business_hours_block()}"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
         "{\n"
         '  "days": [{"day":1, "area":"그날 중심 지역", "note":"실후기에서 자주 가는 동선 한줄",\n'
@@ -282,6 +315,7 @@ def arrange_itinerary(
     nearby_options: list[str] | None = None,
     companion_days: dict[str, int] | None = None,
     base_area: str | None = None,
+    daylight_by_day: dict[int, tuple] | None = None,
 ) -> ArrangedItinerary | None:
     """관광지·식당을 날짜별 동선으로 배치한다. 비활성/실패 시 None."""
     if not _enabled() or days_count < 1 or not attractions:
@@ -340,6 +374,8 @@ def arrange_itinerary(
         "이동수단으로 잇는 동선(transfer)을 만들지 마라(다 같은 곳 안이라 우습게 보인다). "
         "목록의 그 내부 명소들은 이 한 stop에 묶이므로 '한 번씩 써라' 규칙의 예외다.\n"
         f"{_weather_block(weather_by_day)}"
+        f"{_daylight_block(daylight_by_day)}"
+        f"{_business_hours_block()}"
         f"{_anchor_block(base_area, days_count)}"
         f"{_multicity_block(destination, companion_days)}"
         f"{_nearby_block(nearby_options)}\n"

@@ -111,3 +111,46 @@ def test_non_critic_flags_are_preserved() -> None:
     itin.feasibility_flags = ["날씨: 비 예보"]
     PlanCriticAgent()._check_feasibility(itin)
     assert "날씨: 비 예보" in itin.feasibility_flags
+
+
+# --- 영업시간(type 기반) 결정적 플래그 ---
+
+
+def test_market_in_evening_is_flagged() -> None:
+    # 어시장을 저녁(20시) 시작 → 시장류는 오후 일찍 닫으므로 플래그.
+    market = _item("니가타 수산시장", time(20, 0), time(21, 0), type_="수산시장")
+    itin = _itin([DayPlan(day=1, items=[market])])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert any("시장류" in f and "1일차" in f for f in itin.feasibility_flags)
+
+
+def test_market_in_morning_is_ok() -> None:
+    # 같은 시장을 오전(08시)에 가면 정상 — 플래그 없음.
+    market = _item("니가타 수산시장", time(8, 0), time(9, 30), type_="수산시장")
+    itin = _itin([DayPlan(day=2, items=[market])])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("시장류" in f for f in itin.feasibility_flags)
+
+
+def test_museum_late_finish_is_flagged() -> None:
+    # 미술관이 19시까지 → 대개 17~18시 마감이라 플래그.
+    day = DayPlan(day=1, items=[_item("현대 미술관", time(16, 0), time(19, 0), type_="미술관")])
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert any("박물관·미술관" in f for f in itin.feasibility_flags)
+
+
+def test_museum_daytime_is_ok() -> None:
+    # 미술관이 17시 종료면 정상(마감 17:30 이내).
+    day = DayPlan(day=1, items=[_item("현대 미술관", time(14, 0), time(17, 0), type_="미술관")])
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("박물관·미술관" in f for f in itin.feasibility_flags)
+
+
+def test_non_market_non_museum_not_flagged() -> None:
+    # 시장·박물관류가 아닌 곳은 저녁에 있어도 영업시간 플래그 없음(상점가는 저녁 OK).
+    day = DayPlan(day=1, items=[_item("도톤보리 상점가", time(20, 0), time(21, 0), type_="상점가")])
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("시장류" in f or "박물관" in f for f in itin.feasibility_flags)

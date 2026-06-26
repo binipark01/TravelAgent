@@ -8,7 +8,10 @@ from math import ceil
 
 from travel_agent.app.connectors.nearby.day_trips import lookup_nearby
 from travel_agent.app.connectors.routes.local_transport import lookup_local_transport
-from travel_agent.app.connectors.weather.open_meteo import fetch_trip_weather
+from travel_agent.app.connectors.weather.open_meteo import (
+    fetch_trip_daylight,
+    fetch_trip_weather,
+)
 from travel_agent.app.llm.curator import (
     curate_city_pois,
     curate_companion_cities,
@@ -77,6 +80,9 @@ class RouteAgent:
         # 날씨를 먼저 받아 표시에 재사용한다.
         weather = self._fetch_weather(state, brief, days_count)
         weather_by_day = self._weather_by_day(brief.start_date, days_count, weather)
+        # 일출·일몰(실데이터/로컬계산)을 일차별로 받아 배치기에 넘긴다 — 야외 경치는 일몰 전,
+        # 야경은 일몰 후에 배치하게 한다.
+        daylight_by_day = self._daylight_by_day(state, brief, days_count)
 
         # 1순위: 디시·네이버카페·블로그의 '실제 다녀온 코스 후기'로 일정 구조를 가져온다.
         # 진짜 사람들의 동선이라 시간대(야경=밤)·숙소근처 시작이 자연스럽다. 못 찾으면(또는
@@ -86,6 +92,7 @@ class RouteAgent:
             days_count=days_count,
             interests=brief.must_include,
             start_date=brief.start_date,
+            daylight_by_day=daylight_by_day or None,
         )
         if arrangement is None:
             # 폴백: 근교·숙박구역·동반도시(병렬 프리페치) + LLM 배치기.
@@ -106,6 +113,7 @@ class RouteAgent:
                 nearby_options=nearby_options,
                 companion_days=companion_days or None,
                 base_area=base_area,
+                daylight_by_day=daylight_by_day or None,
             )
         if arrangement:
             day_plans = self._build_days_from_arrangement(
@@ -527,6 +535,27 @@ class RouteAgent:
             day_date = start_date + timedelta(days=day_number - 1)
             if day_date in weather:
                 result[day_number] = weather[day_date]
+        return result
+
+    def _daylight_by_day(
+        self, state, brief, days_count: int
+    ) -> dict[int, tuple[time, time]]:
+        """일차별 (일출, 일몰) 현지시각. 지오코딩/네트워크 실패해도 로컬 계산으로 채워진다.
+
+        실패(목적지·날짜 없음)면 빈 dict → 배치기는 일조 블록을 생략한다(폴백).
+        """
+        if not state.selected_destination or not brief.start_date:
+            return {}
+        end = brief.end_date or (brief.start_date + timedelta(days=days_count - 1))
+        try:
+            daylight = fetch_trip_daylight(state.selected_destination, brief.start_date, end)
+        except (OSError, ValueError):
+            return {}
+        result: dict[int, tuple[time, time]] = {}
+        for day_number in range(1, days_count + 1):
+            day_date = brief.start_date + timedelta(days=day_number - 1)
+            if day_date in daylight:
+                result[day_number] = daylight[day_date]
         return result
 
     @staticmethod
