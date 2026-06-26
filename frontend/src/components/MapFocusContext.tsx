@@ -26,6 +26,10 @@ export interface MapFocus {
   query?: string
   lat?: number | null
   lng?: number | null
+  // 이름 지오코딩을 이 좌표 주변으로 bias(bounds). 같은-도시 날의 흔한 이름(예: '古町商店街')이
+  // 다른 현(후쿠오카)으로 잘못 찍히는 걸 막는다. 도시 좌표(hub_lat/lng, Open-Meteo)를 쓴다.
+  biasLat?: number | null
+  biasLng?: number | null
   route?: { origin: string; destination: string; waypoints: string[]; mode: string } | null
 }
 

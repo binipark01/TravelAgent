@@ -180,7 +180,16 @@ export function MapCard({
     if (focus?.lat != null && focus?.lng != null) {
       centerOn({ lat: focus.lat, lng: focus.lng })
     } else {
-      o.geocoder?.geocode({ address: focus?.query || hub }, (res, status) => {
+      // bias 좌표가 있으면 그 주변(±0.3°)으로 지오코딩을 편향한다. '古町商店街'처럼 다른 현에
+      // 같은 이름이 있는 흔한 장소가 도시명 접미사만으론 안 잡혀 엉뚱한 곳으로 가는 걸 막는다.
+      const req: google.maps.GeocoderRequest = { address: focus?.query || hub }
+      if (focus?.biasLat != null && focus?.biasLng != null) {
+        req.bounds = new google.maps.LatLngBounds(
+          { lat: focus.biasLat - 0.3, lng: focus.biasLng - 0.3 },
+          { lat: focus.biasLat + 0.3, lng: focus.biasLng + 0.3 },
+        )
+      }
+      o.geocoder?.geocode(req, (res, status) => {
         if (status === 'OK' && res && res[0]) centerOn(res[0].geometry.location)
       })
     }

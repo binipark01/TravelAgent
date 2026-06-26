@@ -99,21 +99,38 @@ export function PlanCards({
   const cleanRegion = (r?: string | null) =>
     (r || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
 
-  // 한 지점의 지오코딩 쿼리. 좌표 있으면 좌표. 없으면 '이름, 그날 지역(region)'.
-  // region(=day.area)으로 anchor 해야 교토 같은 근교 날의 장소가 hub(오사카)로 잘못 찍히지
-  // 않는다(예전엔 '후시미이나리, 오사카' → 오사카 도심으로 폴백). region 없으면 hub로.
-  // place.area는 식사의 '음식 종류'가 들어갈 수 있어 anchor로 쓰지 않는다 — 별도 region 사용.
-  const placeQuery = (place: MapPlacePick) =>
-    place.lat != null && place.lng != null
-      ? `${place.lat},${place.lng}`
-      : [place.label, cleanRegion(place.region) || hub].filter(Boolean).join(', ')
+  // 한 장소의 지오코딩 전략. 좌표 있으면 그대로. 없으면 이름 지오코딩인데, 두 경우로 갈린다:
+  //  · 같은-도시 날(region이 hub를 포함하거나 region 없음): hub로 anchor + hub 좌표로 bias.
+  //    '古町商店街'처럼 흔한 이름은 접미사('…, 니가타')만으론 안 눌려 다른 현(후쿠오카)으로
+  //    가버린다. 도시 좌표(hub_lat/lng)로 bounds bias 해야 정확.
+  //  · 근교 날(교토 등, region이 hub 미포함): region으로 anchor, bias 없음. hub로 bias하면
+  //    교토의 약한 이름(후시미이나리·폰토초)이 오사카로 끌린다.
+  const placeFocus = (
+    place: MapPlacePick,
+  ): { query: string; biasLat: number | null; biasLng: number | null } => {
+    if (place.lat != null && place.lng != null) {
+      return { query: `${place.lat},${place.lng}`, biasLat: null, biasLng: null }
+    }
+    const region = cleanRegion(place.region)
+    const hubKey = (hub || '').split(/[\s·,]/)[0]
+    const sameCity = !region || (!!hubKey && region.includes(hubKey))
+    const anchor = sameCity ? hub : region
+    return {
+      query: [place.label, anchor || hub].filter(Boolean).join(', '),
+      biasLat: sameCity ? (tickets?.hub_lat ?? null) : null,
+      biasLng: sameCity ? (tickets?.hub_lng ?? null) : null,
+    }
+  }
 
   const selectPlace = (place: MapPlacePick) => {
+    const focusPlace = placeFocus(place)
     setFocus({
       label: place.label,
-      query: placeQuery(place),
+      query: focusPlace.query,
       lat: place.lat ?? null,
       lng: place.lng ?? null,
+      biasLat: focusPlace.biasLat,
+      biasLng: focusPlace.biasLng,
       route: null,
     })
     scrollToMap()
