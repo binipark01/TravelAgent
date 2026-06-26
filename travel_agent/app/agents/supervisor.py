@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from travel_agent.app.agent_core.cancellation import RunCancelled, is_cancelled
@@ -39,6 +41,40 @@ from travel_agent.app.orchestration.state_machine import (
 )
 from travel_agent.app.schemas.common import FindingSeverity, TripStatus
 from travel_agent.app.schemas.trip import FinalPlanResponse, TripPlanState
+
+# 워크플로 wave 순서(이행 안전: 현재 코드 등장 순서 그대로). 같은 wave 안에서는
+# 레지스트리 등록 순서가 곧 기록 순서이며, 골든 테스트(test_workflow_step_order)와 일치해야 한다.
+_CORE_WAVE = "core"  # 항공·숙소·식당(병렬). scope+_needs_search 게이트.
+_ROUTE_WAVE = "route"  # 동선(직렬, 코어 결과 의존).
+_BUDGET_WAVE = "budget"  # 예산(직렬, 코어 결과 의존).
+_CROSS1_WAVE = "cross1"  # 비자·교통·환율·안전·근교·숙박구역·멀티시티·이벤트(병렬, 종합계획만).
+_CROSS2_WAVE = "cross2"  # 체크리스트·교통권(병렬, cross1 의존, 종합계획만).
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    """워크플로 한 단계의 선언적 명세.
+
+    절차적 인라인 람다 대신 데이터로 단계를 기술한다 — 새 에이전트는 스펙 1줄이면 된다.
+    run/summary/tool_calls는 state를 클로저로 잡으므로 invocation마다 빌드한다(레지스트리는
+    `_build_agent_registry(state)`가 만든다). 실행 순서는 wave가 결정하고, 같은 wave 안의
+    순서는 레지스트리 등록 순서를 따른다(골든 단계 순서 보존).
+    """
+
+    name: str  # recorder step의 agent_name(골든이 검사하는 값)
+    label: str  # 입력 요약(recorder input_summary)
+    wave: str  # 실행 wave(_CORE_WAVE 등)
+    run: Callable[[], None]  # 에이전트 실행(부작용으로 state를 채움)
+    summary: Callable[[], str]  # 출력 요약(recorder output_summary)
+    scope: str | None = None  # 이 키가 `selected`에 있어야 실행(None=wave 활성 시 항상)
+    tool_calls: Callable[[], list[dict]] | None = None  # 도구 호출 기록(없으면 None)
+    reuse_domain: str | None = None  # 설정 시 _needs_search 게이트 적용(재사용 시 _emit_reused)
+    reuse_label: str | None = None  # _emit_reused에 쓸 한글 라벨
+
+
+# wave 실행 순서(병렬 wave는 한 번에, 직렬 wave는 단계별로). 러너가 이 순서로 돈다.
+_PARALLEL_WAVES = (_CORE_WAVE, _CROSS1_WAVE, _CROSS2_WAVE)
+_SERIAL_WAVES = (_ROUTE_WAVE, _BUDGET_WAVE)
 
 
 class TravelSupervisorAgent:
@@ -234,176 +270,26 @@ class TravelSupervisorAgent:
             )
 
         set_status(state, TripStatus.drafting, "Agent itinerary stage started.")
+        # 선언적 레지스트리 + 제네릭 wave 러너로 단계를 돈다. 인라인 람다 wave를 데이터로
+        # 옮긴 것이라 단계 순서·기록 의미는 동일하다(골든 test_workflow_step_order 보존).
+        selected_set = set(selected)
+        registry = self._build_agent_registry(state)
         # 항공·숙소·식당은 서로 독립(다른 state 필드 기록)이라 동시에 검색한다 — 가장 느린
-        # 단계(브라우저 스크래핑·웹검색)들이 합쳐지지 않고 겹쳐 돈다. 재검색 판정은 메인스레드
-        # 에서 먼저 한다(state.constraints 기록이 직렬이어야 안전).
-        core_specs: list = []
-        if "flight" in selected:
-            if self._needs_search(state, "flight", bool(state.transport_options)):
-                core_specs.append((
-                    "FlightAgent",
-                    "항공/이동 후보 탐색",
-                    lambda: self.flight_agent.run(state),
-                    lambda: f"{len(state.transport_options)}개 항공/이동 후보",
-                    lambda: [{"tool": "FlightProvider.search_flights",
-                              "count": len(state.transport_options)}],
-                ))
-            else:
-                self._emit_reused(recorder, "항공", len(state.transport_options))
-        if "accommodation" in selected:
-            if self._needs_search(state, "accommodation", bool(state.accommodation_options)):
-                core_specs.append((
-                    "AccommodationAgent",
-                    "숙소 후보 탐색",
-                    lambda: self.accommodation_agent.run(state),
-                    lambda: f"{len(state.accommodation_options)}개 숙소 후보",
-                    lambda: [{"tool": "AccommodationSearchTool.search",
-                              "count": len(state.accommodation_options)}],
-                ))
-            else:
-                self._emit_reused(recorder, "숙소", len(state.accommodation_options))
-        if "restaurant" in selected:
-            if self._needs_search(state, "restaurant", bool(state.poi_candidates)):
-                core_specs.append((
-                    "RestaurantAgent",
-                    "맛집/쇼핑/체험 후보 탐색",
-                    lambda: self.restaurant_agent.run(state),
-                    lambda: f"{len(state.poi_candidates)}개 후보",
-                    lambda: [{"tool": "PlacesProvider.search_pois",
-                              "count": len(state.poi_candidates)}],
-                ))
-            else:
-                self._emit_reused(recorder, "맛집/관광", len(state.poi_candidates))
-        self._run_parallel(recorder, core_specs)
+        # 단계(브라우저 스크래핑·웹검색)들이 합쳐지지 않고 겹쳐 돈다. 재검색 판정(_needs_search)은
+        # _run_wave가 메인스레드에서 먼저 한다(state.constraints 기록이 직렬이어야 안전).
+        self._run_wave(_CORE_WAVE, registry, recorder, state, selected_set)
         # 동선·예산은 위 결과(관광지·항공·숙소)에 의존하므로 직렬로 둔다.
-        if "route" in selected:
-            self._recorded_step(
-                recorder,
-                "RouteAgent",
-                "동선 최적화",
-                lambda: self.route_agent.run(state),
-                lambda: (
-                    f"{len(state.optimized_itinerary.days) if state.optimized_itinerary else 0}"
-                    "일 일정"
-                ),
-                [{"tool": "RoutesProvider.compute_route_matrix"}],
-            )
-        if "budget" in selected:
-            self._recorded_step(
-                recorder,
-                "BudgetAgent",
-                "예산 계산",
-                lambda: self.budget_agent.run(state),
-                lambda: (
-                    f"총 예상 비용 {state.budget.total_estimated_cost:.0f} {state.currency}"
-                    if state.budget
-                    else "예산 계산 없음"
-                ),
-            )
+        self._run_wave(_ROUTE_WAVE, registry, recorder, state, selected_set)
+        self._run_wave(_BUDGET_WAVE, registry, recorder, state, selected_set)
         # 횡단 정보(입국/비자·현지교통·환율·안전·근교·교통권)는 종합 계획일 때만.
         # 항공권만/숙소만 같은 단일 검색에는 붙이지 않는다(과한 출력 방지).
         if is_full_plan:
-            # 1차: 서로 독립인 횡단 정보(비자·교통·환율·안전·근교·숙박구역·멀티시티)를 동시에.
-            # 각각 다른 state 필드만 기록하므로 충돌 없음. 가장 느린 건 근교·숙박구역 웹검색.
-            self._run_parallel(recorder, [
-                (
-                    "VisaAgent", "입국/비자 요건 확인",
-                    lambda: self.visa_agent.run(state),
-                    lambda: (
-                        state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "LocalTransportAgent", "현지 교통 안내",
-                    lambda: self.local_transport_agent.run(state),
-                    lambda: (
-                        f"{state.local_transport.city} 교통 안내"
-                        if state.local_transport else "현지 교통 데이터 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "FxAgent", "환율/예산 환산",
-                    lambda: self.fx_agent.run(state),
-                    lambda: (
-                        f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
-                        f"{state.fx_info.base_currency}"
-                        if state.fx_info else "환율 정보 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "SafetyAgent", "안전·긴급 정보",
-                    lambda: self.safety_agent.run(state),
-                    lambda: (
-                        f"{state.safety_info.destination_country} 안전 정보"
-                        if state.safety_info else "안전 정보 데이터 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "NearbyAgent", "근교 당일치기 정리",
-                    lambda: self.nearby_agent.run(state),
-                    lambda: (
-                        f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
-                        if state.nearby_guide else "근교 데이터 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "StayAreaAgent", "추천 숙박 구역 정리",
-                    lambda: self.stay_area_agent.run(state),
-                    lambda: (
-                        f"{state.stay_area_guide.destination} 숙박 구역 "
-                        f"{len(state.stay_area_guide.areas)}곳"
-                        if state.stay_area_guide else "숙박 구역 데이터 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "MultiCityAgent", "멀티시티 동선 정리",
-                    lambda: self.multicity_agent.run(state),
-                    lambda: (
-                        f"{len(state.multicity_plan.segments)}개 도시 동선"
-                        if state.multicity_plan else "단일 목적지"
-                    ),
-                    None,
-                ),
-                (
-                    "LocalEventsAgent", "현지 축제·이벤트 검색",
-                    lambda: self.events_agent.run(state),
-                    lambda: (
-                        f"{state.local_events.destination} 행사 "
-                        f"{len(state.local_events.events)}건"
-                        if state.local_events else "해당 기간 행사 없음"
-                    ),
-                    None,
-                ),
-            ])
+            # 1차: 서로 독립인 횡단 정보(비자·교통·환율·안전·근교·숙박구역·멀티시티·이벤트)를
+            # 동시에. 각각 다른 state 필드만 기록하므로 충돌 없음(가장 느린 건 근교·숙박 웹검색).
+            self._run_wave(_CROSS1_WAVE, registry, recorder, state, selected_set)
             # 2차: 1차 결과에 의존 — 체크리스트(비자·환율 맥락), 교통권(근교 목적지). 둘은 서로
             # 독립이라 동시에.
-            self._run_parallel(recorder, [
-                (
-                    "ChecklistAgent", "출발 전 준비물 정리",
-                    lambda: self.checklist_agent.run(state),
-                    lambda: (
-                        f"{state.prep_checklist.destination} 준비물 "
-                        f"{len(state.prep_checklist.groups)}개 그룹"
-                        if state.prep_checklist else "준비물 데이터 없음"
-                    ),
-                    None,
-                ),
-                (
-                    "TransportTicketsAgent", "교통권 예매·경로 정리",
-                    lambda: self.transport_tickets_agent.run(state),
-                    lambda: (
-                        f"{len(state.transport_tickets.platforms)}개 예매처"
-                        if state.transport_tickets else "교통권 데이터 없음"
-                    ),
-                    None,
-                ),
-            ])
+            self._run_wave(_CROSS2_WAVE, registry, recorder, state, selected_set)
         # 예산은 FX보다 먼저 돌아 현지통화 환산을 못 채운다 → FX 완료 후 여기서 보강.
         if state.budget and state.fx_info and not state.budget.total_local_label:
             state.budget.total_local_label = BudgetAgent._local_total(
@@ -430,6 +316,204 @@ class TravelSupervisorAgent:
         if recorder:
             recorder.event("plan_ready", "여행 계획이 준비되었습니다.", {"trip_id": state.trip_id})
         return response
+
+    def _build_agent_registry(self, state: TripPlanState) -> list[AgentSpec]:
+        """워크플로 단계의 선언적 레지스트리(이 순서 = 골든 단계 순서).
+
+        run/summary/tool_calls는 state를 클로저로 잡는다. 이 리스트 등장 순서가 각 wave
+        내부의 기록 순서를 결정하므로, 항목을 재배치하면 골든 테스트가 깨질 수 있다.
+        """
+        return [
+            # --- core wave(병렬): 항공·숙소·식당. scope+_needs_search 게이트. ---
+            AgentSpec(
+                name="FlightAgent", label="항공/이동 후보 탐색", wave=_CORE_WAVE,
+                run=lambda: self.flight_agent.run(state),
+                summary=lambda: f"{len(state.transport_options)}개 항공/이동 후보",
+                scope="flight", reuse_domain="flight", reuse_label="항공",
+                tool_calls=lambda: [
+                    {"tool": "FlightProvider.search_flights",
+                     "count": len(state.transport_options)}
+                ],
+            ),
+            AgentSpec(
+                name="AccommodationAgent", label="숙소 후보 탐색", wave=_CORE_WAVE,
+                run=lambda: self.accommodation_agent.run(state),
+                summary=lambda: f"{len(state.accommodation_options)}개 숙소 후보",
+                scope="accommodation", reuse_domain="accommodation", reuse_label="숙소",
+                tool_calls=lambda: [
+                    {"tool": "AccommodationSearchTool.search",
+                     "count": len(state.accommodation_options)}
+                ],
+            ),
+            AgentSpec(
+                name="RestaurantAgent", label="맛집/쇼핑/체험 후보 탐색", wave=_CORE_WAVE,
+                run=lambda: self.restaurant_agent.run(state),
+                summary=lambda: f"{len(state.poi_candidates)}개 후보",
+                scope="restaurant", reuse_domain="restaurant", reuse_label="맛집/관광",
+                tool_calls=lambda: [
+                    {"tool": "PlacesProvider.search_pois",
+                     "count": len(state.poi_candidates)}
+                ],
+            ),
+            # --- route wave(직렬): 동선. 코어 결과 의존. ---
+            AgentSpec(
+                name="RouteAgent", label="동선 최적화", wave=_ROUTE_WAVE,
+                run=lambda: self.route_agent.run(state),
+                summary=lambda: (
+                    f"{len(state.optimized_itinerary.days) if state.optimized_itinerary else 0}"
+                    "일 일정"
+                ),
+                scope="route",
+                tool_calls=lambda: [{"tool": "RoutesProvider.compute_route_matrix"}],
+            ),
+            # --- budget wave(직렬): 예산. 코어 결과 의존. ---
+            AgentSpec(
+                name="BudgetAgent", label="예산 계산", wave=_BUDGET_WAVE,
+                run=lambda: self.budget_agent.run(state),
+                summary=lambda: (
+                    f"총 예상 비용 {state.budget.total_estimated_cost:.0f} {state.currency}"
+                    if state.budget else "예산 계산 없음"
+                ),
+                scope="budget",
+            ),
+            # --- cross1 wave(병렬, 종합계획만): 서로 독립인 횡단 정보. ---
+            AgentSpec(
+                name="VisaAgent", label="입국/비자 요건 확인", wave=_CROSS1_WAVE,
+                run=lambda: self.visa_agent.run(state),
+                summary=lambda: (
+                    state.visa_result.summary if state.visa_result else "입국 요건 정보 없음"
+                ),
+            ),
+            AgentSpec(
+                name="LocalTransportAgent", label="현지 교통 안내", wave=_CROSS1_WAVE,
+                run=lambda: self.local_transport_agent.run(state),
+                summary=lambda: (
+                    f"{state.local_transport.city} 교통 안내"
+                    if state.local_transport else "현지 교통 데이터 없음"
+                ),
+            ),
+            AgentSpec(
+                name="FxAgent", label="환율/예산 환산", wave=_CROSS1_WAVE,
+                run=lambda: self.fx_agent.run(state),
+                summary=lambda: (
+                    f"1 {state.fx_info.target_currency} ≈ {state.fx_info.base_per_target:.2f} "
+                    f"{state.fx_info.base_currency}"
+                    if state.fx_info else "환율 정보 없음"
+                ),
+            ),
+            AgentSpec(
+                name="SafetyAgent", label="안전·긴급 정보", wave=_CROSS1_WAVE,
+                run=lambda: self.safety_agent.run(state),
+                summary=lambda: (
+                    f"{state.safety_info.destination_country} 안전 정보"
+                    if state.safety_info else "안전 정보 데이터 없음"
+                ),
+            ),
+            AgentSpec(
+                name="NearbyAgent", label="근교 당일치기 정리", wave=_CROSS1_WAVE,
+                run=lambda: self.nearby_agent.run(state),
+                summary=lambda: (
+                    f"{state.nearby_guide.hub} 근교 {len(state.nearby_guide.destinations)}곳"
+                    if state.nearby_guide else "근교 데이터 없음"
+                ),
+            ),
+            AgentSpec(
+                name="StayAreaAgent", label="추천 숙박 구역 정리", wave=_CROSS1_WAVE,
+                run=lambda: self.stay_area_agent.run(state),
+                summary=lambda: (
+                    f"{state.stay_area_guide.destination} 숙박 구역 "
+                    f"{len(state.stay_area_guide.areas)}곳"
+                    if state.stay_area_guide else "숙박 구역 데이터 없음"
+                ),
+            ),
+            AgentSpec(
+                name="MultiCityAgent", label="멀티시티 동선 정리", wave=_CROSS1_WAVE,
+                run=lambda: self.multicity_agent.run(state),
+                summary=lambda: (
+                    f"{len(state.multicity_plan.segments)}개 도시 동선"
+                    if state.multicity_plan else "단일 목적지"
+                ),
+            ),
+            AgentSpec(
+                name="LocalEventsAgent", label="현지 축제·이벤트 검색", wave=_CROSS1_WAVE,
+                run=lambda: self.events_agent.run(state),
+                summary=lambda: (
+                    f"{state.local_events.destination} 행사 "
+                    f"{len(state.local_events.events)}건"
+                    if state.local_events else "해당 기간 행사 없음"
+                ),
+            ),
+            # --- cross2 wave(병렬, 종합계획만): cross1 결과 의존. ---
+            AgentSpec(
+                name="ChecklistAgent", label="출발 전 준비물 정리", wave=_CROSS2_WAVE,
+                run=lambda: self.checklist_agent.run(state),
+                summary=lambda: (
+                    f"{state.prep_checklist.destination} 준비물 "
+                    f"{len(state.prep_checklist.groups)}개 그룹"
+                    if state.prep_checklist else "준비물 데이터 없음"
+                ),
+            ),
+            AgentSpec(
+                name="TransportTicketsAgent", label="교통권 예매·경로 정리", wave=_CROSS2_WAVE,
+                run=lambda: self.transport_tickets_agent.run(state),
+                summary=lambda: (
+                    f"{len(state.transport_tickets.platforms)}개 예매처"
+                    if state.transport_tickets else "교통권 데이터 없음"
+                ),
+            ),
+        ]
+
+    def _run_wave(
+        self,
+        wave: str,
+        registry: list[AgentSpec],
+        recorder: AgentRunRecorder | None,
+        state: TripPlanState,
+        selected: set[str],
+    ) -> None:
+        """한 wave의 활성 스펙들을 레지스트리 순서로 실행한다(병렬 wave는 동시에).
+
+        scope 게이트: 스펙.scope가 있으면 selected에 있어야 활성. core 스펙은 추가로
+        _needs_search 게이트를 타며, 재사용이면 실행 대신 _emit_reused로 기록한다.
+        병렬 wave는 _run_parallel(액션만 스레드, 기록은 메인스레드)로, 직렬 wave는
+        _recorded_step로 — 기존과 동일한 기록 의미·취소 체크를 유지한다.
+        """
+        runnable: list[AgentSpec] = []
+        for spec in registry:
+            if spec.wave != wave:
+                continue
+            if spec.scope is not None and spec.scope not in selected:
+                continue
+            # core 스펙: 이미 검색됐고 입력 변화 없으면 재실행 대신 재사용 이벤트.
+            if spec.reuse_domain is not None:
+                count = self._domain_result_count(state, spec.reuse_domain)
+                if not self._needs_search(state, spec.reuse_domain, count > 0):
+                    self._emit_reused(recorder, spec.reuse_label or spec.name, count)
+                    continue
+            runnable.append(spec)
+        if not runnable:
+            return
+        if wave in _PARALLEL_WAVES:
+            self._run_parallel(
+                recorder,
+                [(s.name, s.label, s.run, s.summary, s.tool_calls) for s in runnable],
+            )
+        else:
+            for spec in runnable:
+                self._recorded_step(
+                    recorder, spec.name, spec.label, spec.run, spec.summary,
+                    spec.tool_calls() if spec.tool_calls else None,
+                )
+
+    @staticmethod
+    def _domain_result_count(state: TripPlanState, domain: str) -> int:
+        return len(
+            {
+                "flight": state.transport_options,
+                "accommodation": state.accommodation_options,
+                "restaurant": state.poi_candidates,
+            }[domain]
+        )
 
     def _ensure_minimum_brief(self, state: TripPlanState) -> None:
         """후속 질문 없이 계획이 항상 완성되도록 빈 필드를 조용히 채운다.
