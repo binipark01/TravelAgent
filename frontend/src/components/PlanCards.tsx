@@ -95,13 +95,18 @@ export function PlanCards({
         .getElementById('trip-map-card')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     )
-  // 한 지점의 지오코딩 쿼리(좌표 있으면 좌표, 없으면 '이름, 도시').
-  // 도시(hub)로 고정한다. 식사 항목의 area엔 위치가 아닌 '음식 종류'가 들어가서,
-  // 그걸 붙이면 'Le Vent d'Armor, 브르타뉴식' → 브르타뉴로 잘못 지오코딩되기 때문.
+  // 그날 지역(교토·린쿠타운 등)을 지오코딩 anchor로 정제한다('근교:'·'·' 제거).
+  const cleanRegion = (r?: string | null) =>
+    (r || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
+
+  // 한 지점의 지오코딩 쿼리. 좌표 있으면 좌표. 없으면 '이름, 그날 지역(region)'.
+  // region(=day.area)으로 anchor 해야 교토 같은 근교 날의 장소가 hub(오사카)로 잘못 찍히지
+  // 않는다(예전엔 '후시미이나리, 오사카' → 오사카 도심으로 폴백). region 없으면 hub로.
+  // place.area는 식사의 '음식 종류'가 들어갈 수 있어 anchor로 쓰지 않는다 — 별도 region 사용.
   const placeQuery = (place: MapPlacePick) =>
     place.lat != null && place.lng != null
       ? `${place.lat},${place.lng}`
-      : [place.label, hub].filter(Boolean).join(', ')
+      : [place.label, cleanRegion(place.region) || hub].filter(Boolean).join(', ')
 
   const selectPlace = (place: MapPlacePick) => {
     setFocus({
@@ -118,7 +123,7 @@ export function PlanCards({
     if (stops.length < 1) return
     // 그날 지역(린쿠타운·간사이공항, 교토 등)으로 anchor. 도시 전체(hub)로 잡으면 '고디바 카페'
     // 같은 이름이 시내 다른 지점으로 찍혀 동선이 크게 우회한다. 좌표 있으면 좌표 우선.
-    const region = (route.region || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
+    const region = cleanRegion(route.region)
     const routeQuery = (place: MapPlacePick) =>
       place.lat != null && place.lng != null
         ? `${place.lat},${place.lng}`

@@ -241,6 +241,7 @@ export function DayPlanCard({
                 <ItineraryItemRow
                   item={entry.data}
                   info={poiInfo[cleanDisplayText(entry.data.title)]}
+                  region={day.area}
                   key={entry.id}
                 />
               )
@@ -250,6 +251,7 @@ export function DayPlanCard({
               const trig = placeTriggerProps(focus, {
                 label: cleanDisplayText(meal.title),
                 area: cleanDisplayText(meal.area),
+                region: day.area,
               })
               return (
                 <div
@@ -361,11 +363,20 @@ function SortableEntryRow({
   )
 }
 
-export function ItineraryItemRow({ item, info }: { item: ItineraryItem; info?: PoiInfo }) {
+export function ItineraryItemRow({
+  item,
+  info,
+  region,
+}: {
+  item: ItineraryItem
+  info?: PoiInfo
+  region?: string | null
+}) {
   const focus = useMapFocus()
   const trig = placeTriggerProps(focus, {
     label: cleanDisplayText(item.title),
     area: item.location.area ?? item.location.name,
+    region,
     lat: item.location.latitude,
     lng: item.location.longitude,
   })

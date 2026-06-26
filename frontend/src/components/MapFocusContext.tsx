@@ -4,6 +4,9 @@ import { createContext, useContext, type HTMLAttributes } from 'react'
 export interface MapPlacePick {
   label: string
   area?: string | null
+  // 그날 지역(예: '교토 동남부·히가시야마'). 좌표 없는 장소를 도시(hub)가 아니라 이 지역으로
+  // 지오코딩 anchor 해서, 교토 같은 근교 날의 장소가 hub(오사카)로 잘못 찍히는 걸 막는다.
+  region?: string | null
   lat?: number | null
   lng?: number | null
 }
