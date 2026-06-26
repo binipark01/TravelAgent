@@ -71,7 +71,8 @@ def _llm_resolve(name: str) -> ResolvedPlace | None:
         command=settings.codex_cli_command,
         model=settings.codex_oauth_model,
         reasoning_effort=settings.codex_reasoning_effort,
-        timeout_seconds=60,
+        # 하드코딩 60s 대신 설정에서(상한 60s) — 전역 타임아웃을 낮추면 함께 낮아진다.
+        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 60),
     )
     if not isinstance(data, dict):
         return None

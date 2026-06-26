@@ -289,3 +289,43 @@ def test_arranger_parses_and_caps_llm_output(monkeypatch: pytest.MonkeyPatch) ->
     assert stops[0].travel_to_next_min == 0  # 음수 → 0
     assert stops[0].travel_mode == "이동"  # 빈 값 → 기본
     assert stops[1].travel_mode == "버스"
+
+
+# --- A1: _parse_days 직접 호출로 형식 일탈 방어 검증 ---
+
+
+def test_parse_days_skips_malformed_entries() -> None:
+    raw_days = [
+        "문자열날",  # dict 아님 → 무시
+        {"day": 1, "area": "A", "stops": "이건리스트가아님"},  # stops 비-리스트 → 무시
+        {"day": 2, "area": "B", "stops": []},  # stops 비어 있음 → 무시(stop 없는 날 제외)
+        {
+            "day": 3,
+            "area": "C",
+            "note": "  ",  # 공백 note → None
+            "stops": [
+                {"duration_min": 60},  # title 없음 → 이 stop 제외
+                {"title": "  ", "duration_min": 60},  # 빈 title → 제외
+                {"title": "유효장소", "duration_min": 90, "travel_to_next_min": 10},
+            ],
+            "lunch": "",  # 빈 lunch → None
+            "dinner": "식당",
+        },
+    ]
+    result = itinerary_arranger._parse_days(raw_days, days_count=5)
+    assert result is not None
+    # stop이 하나도 없는 날은 빠지고, 유효 stop이 있는 day 3만 남는다.
+    assert len(result.days) == 1
+    day = result.days[0]
+    assert day.area == "C"
+    assert day.note is None  # 공백 → None
+    assert day.lunch is None  # 빈 문자열 → None
+    assert day.dinner == "식당"
+    assert [s.title for s in day.stops] == ["유효장소"]  # title 없는/빈 stop 제외
+
+
+def test_parse_days_returns_none_for_empty_or_nonlist() -> None:
+    assert itinerary_arranger._parse_days("not-a-list", days_count=3) is None
+    assert itinerary_arranger._parse_days([], days_count=3) is None
+    # 모든 날이 무효(stop 없음)면 None.
+    assert itinerary_arranger._parse_days([{"day": 1, "stops": []}], days_count=3) is None

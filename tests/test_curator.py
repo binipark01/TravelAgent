@@ -275,3 +275,88 @@ def test_curate_city_empty_result_returns_none(monkeypatch: pytest.MonkeyPatch) 
         )
         is None
     )
+
+
+# --- A1: 형식 일탈/방어 파싱 (누락 필드·잘못된 타입·non-dict 등에도 안 깨지는지) ---
+
+
+def test_curate_city_drops_nameless_and_clamps_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    fake = {
+        "attractions": [
+            {"type": "전망대"},  # name 없음 → 버려진다
+            "문자열-잘못된-항목",  # dict 아님 → 무시
+            {
+                "name": "거대명소",
+                "duration_min": 9999,  # 상한 240으로 클램프
+                "rating": 99,  # 범위 밖(0~5) → None
+                "sources": ["https://example.com"],
+            },
+            {"name": "짧은곳", "duration_min": "x", "rating": "bad"},  # 타입 오류 → 기본/None
+        ],
+        "restaurants": [],
+    }
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: fake)
+    result = curator.curate_city_pois(
+        "도시", interests=[], start_date=None, currency="KRW",
+        attraction_pool=[], restaurant_pool=[],
+    )
+    assert result is not None
+    titles = [a.title for a in result.attractions]
+    assert titles == ["거대명소", "짧은곳"]  # name 없는 항목·non-dict는 빠진다
+    big = result.attractions[0]
+    assert big.recommended_duration_minutes == 240  # 9999 클램프
+    assert big.rating is None  # 범위 밖 별점은 버린다
+    short = result.attractions[1]
+    assert short.recommended_duration_minutes == 90  # 타입 오류 → 기본 90
+    assert short.rating is None
+
+
+def test_curate_nearby_non_dict_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    # destinations가 리스트가 아니거나 비면 None.
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: {"destinations": "nope"})
+    assert curator.curate_nearby("도시") is None
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: None)
+    assert curator.curate_nearby("도시2") is None
+
+
+def test_curate_events_drops_sourceless(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import date as _date
+
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    # 출처 URL 없는 행사는 버린다(없는 행사 지어내기 방지).
+    fake = {
+        "summary": "여름 축제",
+        "events": [
+            {"name": "출처있는축제", "category": "축제", "source_url": "https://x.example"},
+            {"name": "출처없는행사", "category": "전시"},  # source_url 없음 → 버려짐
+            {"category": "행사", "source_url": "https://y.example"},  # name 없음 → 버려짐
+        ],
+    }
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: fake)
+    guide = curator.curate_events("도시", _date(2026, 7, 1), _date(2026, 7, 5))
+    assert guide is not None
+    assert [e.name for e in guide.events] == ["출처있는축제"]
+
+
+def test_curate_city_cache_key_includes_season_and_currency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A3: 시즌(월)·통화가 키에 들어가 서로 다른 달/통화는 캐시를 공유하지 않는다.
+    from datetime import date as _date
+
+    calls = {"n": 0}
+
+    def fake_run(prompt: str, settings) -> dict:  # noqa: ANN001
+        calls["n"] += 1
+        return _FAKE_CITY
+
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", fake_run)
+    common = dict(interests=["맛집"], attraction_pool=[], restaurant_pool=[])
+    curator.curate_city_pois("도시", start_date=_date(2026, 6, 1), currency="KRW", **common)
+    curator.curate_city_pois("도시", start_date=_date(2026, 12, 1), currency="KRW", **common)
+    curator.curate_city_pois("도시", start_date=_date(2026, 6, 1), currency="USD", **common)
+    # 같은 (6월·KRW)만 캐시 적중 → 6월/KRW, 12월/KRW, 6월/USD = 3회 호출.
+    assert calls["n"] == 3

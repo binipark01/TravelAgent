@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from urllib.parse import urlencode
-from urllib.request import urlopen
+
+from travel_agent.app.connectors.http_fetch import fetch_json
 
 _GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST = "https://api.open-meteo.com/v1/forecast"
@@ -18,11 +18,8 @@ _TIMEOUT = 8
 
 
 def _get(url: str, params: dict[str, str]) -> dict | None:
-    try:
-        with urlopen(f"{url}?{urlencode(params)}", timeout=_TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError):
-        return None
+    # transient 실패는 1회 재시도(fetch_json). 실패하면 None → 호출부가 빈 dict로 폴백.
+    return fetch_json(f"{url}?{urlencode(params)}", timeout=_TIMEOUT, retries=1)
 
 
 def geocode(place: str) -> tuple[float, float] | None:

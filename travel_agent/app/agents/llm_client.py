@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -13,6 +14,8 @@ from urllib import request
 from pydantic import ValidationError
 
 from travel_agent.app.schemas.brief import TripBrief
+
+logger = logging.getLogger(__name__)
 
 
 class RetryableBriefError(RuntimeError):
@@ -109,7 +112,13 @@ def live_llm_local_enabled(settings) -> bool:  # noqa: ANN001 - Settings(순환 
     enable_live_llm + codex 가용성만 본다. 웹검색 플래그는 일부러 보지 않는다 — 이 경로는
     웹검색이 불필요하므로 'web_search 누락'이 아니라 '의도적으로 안 봄'임을 이름으로 드러낸다.
     """
-    return settings.enable_live_llm and codex_brief_available(settings.codex_cli_command)
+    if not settings.enable_live_llm:
+        logger.debug("live LLM 게이트 off(enable_live_llm=False) → 휴리스틱 폴백")
+        return False
+    if not codex_brief_available(settings.codex_cli_command):
+        logger.debug("live LLM 게이트 off(codex CLI 없음) → 휴리스틱 폴백")
+        return False
+    return True
 
 
 def live_llm_web_enabled(settings) -> bool:  # noqa: ANN001 - Settings(순환 import 회피)
@@ -117,7 +126,12 @@ def live_llm_web_enabled(settings) -> bool:  # noqa: ANN001 - Settings(순환 im
 
     로컬 게이트에 codex_oauth_enable_web_search까지 추가로 요구한다.
     """
-    return live_llm_local_enabled(settings) and settings.codex_oauth_enable_web_search
+    if not live_llm_local_enabled(settings):
+        return False
+    if not settings.codex_oauth_enable_web_search:
+        logger.debug("web LLM 게이트 off(web_search 비활성) → 휴리스틱 폴백")
+        return False
+    return True
 
 
 def resolve_codex_command(command: str = "codex") -> str:
@@ -237,14 +251,24 @@ def run_codex_json(
                 timeout=timeout_seconds,
                 check=False,
             )
-        except (OSError, subprocess.TimeoutExpired):
+        except subprocess.TimeoutExpired:
+            # 동작 불변(폴백), 왜 LLM이 비었는지만 남긴다.
+            logger.info("codex 호출 타임아웃 web_search=%s timeout=%ds", enable_web_search,
+                        timeout_seconds)
+            return None
+        except OSError as exc:
+            logger.info("codex 호출 실패(OSError) err=%s", exc)
             return None
     text = extract_codex_agent_message(result.stdout)
     if not text:
+        logger.info(
+            "codex 응답 비어 있음 web_search=%s rc=%s", enable_web_search, result.returncode
+        )
         return None
     try:
         return parse_codex_json_object(text)
-    except (RuntimeError, json.JSONDecodeError):
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        logger.info("codex 응답 JSON 파싱 실패 err=%s", exc)
         return None
 
 

@@ -184,19 +184,6 @@ class TravelSupervisorAgent:
         for key in ("flight_sig", "accommodation_sig", "restaurant_sig"):
             state.constraints.pop(key, None)
 
-    def _pause_for_critical_missing(
-        self, state: TripPlanState, recorder: AgentRunRecorder | None
-    ) -> FinalPlanResponse:
-        missing = critical_missing_fields(state)
-        set_status(state, TripStatus.needs_user_input, "Agent run paused for missing fields.")
-        if recorder:
-            recorder.event(
-                "missing_info_detected",
-                "필수 여행 정보가 부족해 agent run이 대기 중입니다.",
-                {"missing_fields": missing},
-            )
-        return self.presentation_agent.build_final_response(state)
-
     def run_agent_workflow(
         self,
         state: TripPlanState,
@@ -605,98 +592,6 @@ class TravelSupervisorAgent:
         refs.extend(poi.metadata.source_ref for poi in state.poi_candidates)
         append_source_refs(state, refs)
 
-    def _is_flight_search_request(self, state: TripPlanState) -> bool:
-        if not state.brief:
-            return False
-        return "flight_search" in (state.brief.transport_preference or "")
-
-    def _is_accommodation_search_request(self, state: TripPlanState) -> bool:
-        if not state.brief:
-            return False
-        text = f"{state.raw_user_message}\n{' '.join(state.raw_user_messages)}".lower()
-        wants_accommodation = any(
-            token in text
-            for token in ["숙소", "호텔", "에어비앤비", "airbnb", "agoda", "booking.com"]
-        )
-        wants_full_plan = any(
-            token in text for token in ["일정", "여행 계획", "동선", "맛집", "쇼핑", "관광", "코스"]
-        )
-        return (
-            wants_accommodation
-            and not wants_full_plan
-            and not self._is_flight_search_request(state)
-        )
-
-    def _finish_flight_search(
-        self, state: TripPlanState, recorder: AgentRunRecorder | None
-    ) -> FinalPlanResponse:
-        self._collect_provider_source_refs(state)
-        set_status(state, TripStatus.validating, "Flight search validation stage started.")
-        self._recorded_step(
-            recorder,
-            "PlanCriticAgent",
-            "항공 후보 검증",
-            lambda: self.critic_agent.run(state),
-            lambda: f"{len(state.critic_findings)}개 검증 결과",
-        )
-        blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]
-        if blocking:
-            set_status(state, TripStatus.needs_user_input, "Flight search needs user input.")
-            if recorder:
-                recorder.event(
-                    "critic_blocker_found",
-                    "항공 후보 확인 중 차단 이슈가 발견되었습니다.",
-                    {"count": len(blocking)},
-                )
-        else:
-            set_status(state, TripStatus.ready, "Flight search completed.")
-
-        response = self._recorded_step(
-            recorder,
-            "PresentationAgent",
-            "항공 후보 정리",
-            lambda: self.presentation_agent.build_final_response(state),
-            lambda: "항공 후보 응답 정리 완료",
-        )
-        if recorder and state.status == TripStatus.ready:
-            recorder.event("plan_ready", "항공 후보가 준비되었습니다.", {"trip_id": state.trip_id})
-        return response
-
-    def _finish_accommodation_search(
-        self, state: TripPlanState, recorder: AgentRunRecorder | None
-    ) -> FinalPlanResponse:
-        self._collect_provider_source_refs(state)
-        set_status(state, TripStatus.validating, "Accommodation search validation stage started.")
-        self._recorded_step(
-            recorder,
-            "PlanCriticAgent",
-            "숙소 후보 검증",
-            lambda: self.critic_agent.run(state),
-            lambda: f"{len(state.critic_findings)}개 검증 결과",
-        )
-        blocking = [f for f in state.critic_findings if f.severity == FindingSeverity.blocking]
-        if blocking:
-            set_status(state, TripStatus.needs_user_input, "Accommodation search needs user input.")
-            if recorder:
-                recorder.event(
-                    "critic_blocker_found",
-                    "숙소 후보 확인 중 차단 이슈가 발견되었습니다.",
-                    {"count": len(blocking)},
-                )
-        else:
-            set_status(state, TripStatus.ready, "Accommodation search completed.")
-
-        response = self._recorded_step(
-            recorder,
-            "PresentationAgent",
-            "숙소 후보 정리",
-            lambda: self.presentation_agent.build_final_response(state),
-            lambda: "숙소 후보 응답 정리 완료",
-        )
-        if recorder and state.status == TripStatus.ready:
-            recorder.event("plan_ready", "숙소 후보가 준비되었습니다.", {"trip_id": state.trip_id})
-        return response
-
     def _recorded_step(
         self,
         recorder: AgentRunRecorder | None,
@@ -767,53 +662,3 @@ class TravelSupervisorAgent:
             f"누락: {len(state.missing_fields)}개"
         )
 
-    def _add_agent_passport_missing(self, state: TripPlanState) -> None:
-        if not state.brief or not state.brief.destinations:
-            return
-        if self._is_accommodation_search_request(state):
-            state.missing_fields = [
-                field
-                for field in state.missing_fields
-                if field not in {"origin", "passport_country"}
-            ]
-            state.brief.missing_fields = [
-                field
-                for field in state.brief.missing_fields
-                if field not in {"origin", "passport_country"}
-            ]
-            return
-        if self._is_flight_search_request(state):
-            state.missing_fields = [
-                field for field in state.missing_fields if field != "passport_country"
-            ]
-            state.brief.missing_fields = [
-                field for field in state.brief.missing_fields if field != "passport_country"
-            ]
-            return
-        if state.brief.passport_country:
-            state.missing_fields = [
-                field for field in state.missing_fields if field != "passport_country"
-            ]
-            state.brief.missing_fields = [
-                field for field in state.brief.missing_fields if field != "passport_country"
-            ]
-            return
-        if "passport_country" not in state.missing_fields:
-            state.missing_fields.append("passport_country")
-        if "passport_country" not in state.brief.missing_fields:
-            state.brief.missing_fields.append("passport_country")
-
-    def _skip_remaining_after_intake(self, recorder: AgentRunRecorder | None, reason: str) -> None:
-        if not recorder:
-            return
-        for agent_name in [
-            "DestinationDiscoveryAgent",
-            "FlightAgent",
-            "AccommodationAgent",
-            "RestaurantAgent",
-            "RouteAgent",
-            "BudgetAgent",
-            "PlanCriticAgent",
-            "PresentationAgent",
-        ]:
-            recorder.skip_step(agent_name, reason)

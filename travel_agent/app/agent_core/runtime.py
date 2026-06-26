@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.orm import Session
 
 from travel_agent.app.agent_core.cancellation import (
@@ -41,6 +43,22 @@ from travel_agent.app.sources.source_discovery import SourceDiscoveryTool
 from travel_agent.app.tools.travel_tools import ToolExecutor
 from travel_agent.app.utils.ids import new_id
 from travel_agent.app.utils.time import utc_now
+
+logger = logging.getLogger(__name__)
+
+
+def _latency_ms(step: AgentStep) -> int | None:
+    """단계 소요시간(ms). started_at·completed_at이 있을 때만. (관측 로그 전용, shape 불변).
+
+    관측용이라 절대 예외를 던지면 안 된다 — naive/aware 혼재 등 어떤 이유로든 빼기에
+    실패하면 None을 돌려준다(동작·shape에 영향 없음).
+    """
+    if step.started_at is None or step.completed_at is None:
+        return None
+    try:
+        return int((step.completed_at - step.started_at).total_seconds() * 1000)
+    except (TypeError, ValueError):
+        return None
 
 
 class AgentRuntime:
@@ -529,6 +547,8 @@ class RuntimeRecorder(AgentRunRecorder):
             completed_at=utc_now(),
             tool_calls=tool_calls or [],
         )
+        # 관측: 단계 소요시간을 로그로만 남긴다(응답 shape 불변).
+        logger.info("step 완료 agent=%s latency_ms=%s", step.agent_name, _latency_ms(step))
         if tool_calls:
             self.event(
                 "tool_call_completed",
@@ -567,6 +587,11 @@ class RuntimeRecorder(AgentRunRecorder):
             output_summary=reason,
             completed_at=utc_now(),
             error_message=reason,
+        )
+        # 관측: 실패 단계의 소요시간·사유를 로그로 남긴다(응답 shape 불변).
+        logger.info(
+            "step 실패 agent=%s latency_ms=%s reason=%s",
+            step.agent_name, _latency_ms(step), reason,
         )
         self.event(
             "agent_failed",

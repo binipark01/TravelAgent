@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
@@ -30,6 +31,8 @@ from travel_agent.app.schemas.itinerary import (
 from travel_agent.app.schemas.providers import POIOption
 from travel_agent.app.schemas.trip import TripPlanState
 from travel_agent.app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
 
 
 class RouteAgent:
@@ -368,8 +371,12 @@ class RouteAgent:
             for future in futures:
                 try:
                     future.result()
-                except Exception:  # noqa: BLE001 - 사전 조회 실패는 본 호출에서 폴백
-                    pass
+                except Exception as exc:  # noqa: BLE001 - 사전 조회 실패는 본 호출에서 폴백
+                    # 동작은 불변(본 호출에서 폴백), 왜 프리페치가 실패했는지만 남긴다.
+                    logger.info(
+                        "근교/숙박구역/동반도시 프리페치 실패 dest=%s reason=%s",
+                        destination, exc,
+                    )
 
     @staticmethod
     def _base_area(destination: str | None) -> str | None:
