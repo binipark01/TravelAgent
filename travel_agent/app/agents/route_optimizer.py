@@ -35,6 +35,18 @@ from travel_agent.app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
+# 야경·전망(나이트뷰)이 아니면 그날 관광은 이 시각 안에 끝낸다(결정적 캡). 식사·숙소복귀·공항
+# 이동은 캡 이후에도 정상 배치한다 — 섬·근교 막배 전 복귀 흐름이 자연스럽게 만들어진다.
+_DAY_END_CAP = time(22, 0)
+# 야경/전망류 판정 키워드(title 또는 매칭 POI.type). 이런 곳은 22시를 넘겨도 허용.
+_NIGHT_VIEW_KEYWORDS = (
+    "야경", "전망", "전망대", "전망실", "전망타워", "나이트", "night", "바", "bar",
+    "선셋", "sunset", "일몰", "라이트업", "루프톱", "rooftop",
+)
+# 동선 anchor(공항·숙소/본거지/역) — 관광이 아니라 이동 출발/도착점이라 캡 대상이 아니다
+# (캡이 걸려도 숙소 복귀·공항 이동 stop은 그대로 둬야 그날이 제대로 닫힌다).
+_ANCHOR_KEYWORDS = ("공항", "空港", "airport", "숙소", "본거지", "호텔")
+
 
 class RouteAgent:
     """실데이터(관광지 + 맛집)로 날짜별 추천 일정을 만든다.
@@ -273,7 +285,13 @@ class RouteAgent:
         # 식당으로 쓴 곳을 관광지로도 중복 배치하지 않는다(같은 카페가 점심+관광에 뜨는 버그).
         meal_titles = {t.strip().lower() for t in (arranged.lunch, arranged.dinner) if t}
         stops = [s for s in arranged.stops if s.title.strip().lower() not in meal_titles]
+        # 결정적 캡: 비-야경 관광이 22시를 넘기면 그 stop부터 일반 관광은 더 안 놓는다.
+        # 단 anchor(숙소 복귀·공항 이동)는 캡 이후에도 놓아 그날을 제대로 닫는다.
+        sightseeing_capped = False
         for stop in stops:
+            poi = self._lookup(attr_by_title, stop.title)
+            is_anchor = self._is_anchor_stop(stop, poi)
+            is_night = self._is_night_view(stop, poi)
             # 점심(시작 11~14시)·저녁(시작 17~22시)을 동선 흐름에 끼운다. 식당 앞에도 이동을 넣고,
             # pending(직전 관광→다음 관광 이동)은 식사를 건너뛰어 보존했다 다음 관광에 쓴다.
             if not lunch_done and arranged.lunch and clock >= time(11, 30):
@@ -282,12 +300,30 @@ class RouteAgent:
             if not dinner_done and arranged.dinner and clock >= time(17, 30):
                 place_meal("dinner", arranged.dinner, time(18, 0), time(22, 0))
                 dinner_done = True
-            # 이 관광으로 이동: 직전이 관광이면 배치기 이동시간, 식사 뒤면 보존된 이동을 쓴다.
+            # 이미 캡이 걸렸으면 일반 관광은 건너뛴다(anchor 복귀/공항·야경류는 통과시킨다 —
+            # 야경은 밤이라야 의미 있어 22시 넘겨도 허용).
+            if sightseeing_capped and not is_anchor and not is_night:
+                continue
+            # 이 stop으로의 이동을 가정해 종료 시각을 미리 계산한다(아직 추가 전).
             if last_title is not None:
                 minutes, mode = pending if pending else (meal_move, "도보")
+            else:
+                minutes, mode = 0, ""
+            arrive = self._add_minutes(clock, minutes) if last_title is not None else clock
+            end = self._add_minutes(arrive, stop.duration_min)
+            # 비-야경·비-anchor 관광이 22시를 넘기면: 캡을 걸고 이 stop은 버린다(이후 일반 관광도).
+            # _add_minutes는 자정을 넘기면 시각이 wrap(예: 25:00→01:00)하므로 wrap도 '초과'로 본다.
+            if not is_night and not is_anchor and self._past_day_cap(end):
+                sightseeing_capped = True
+                logger.info(
+                    "일정 캡: %s일차 '%s'(종료 %s)이 22시를 넘겨 제외(야경 아님)",
+                    day_number, stop.title, end.strftime("%H:%M"),
+                )
+                continue  # pending은 보존 → 다음에 놓이는 stop(보통 anchor 복귀)이 이 이동을 쓴다
+            # 실제 배치: 이동 추가 후 stop 추가.
+            if last_title is not None:
                 clock = add_transfer(last_title, stop.title, clock, minutes, mode)
                 pending = None
-            poi = self._lookup(attr_by_title, stop.title)
             end = self._add_minutes(clock, stop.duration_min)
             day.items.append(self._arranged_item(stop, poi, clock, end, currency, state))
             last_title, clock = stop.title, end
@@ -304,6 +340,32 @@ class RouteAgent:
         if not dinner_done and arranged.dinner:
             place_meal("dinner", arranged.dinner, time(18, 0), time(22, 0))
         return day
+
+    @staticmethod
+    def _past_day_cap(end: time) -> bool:
+        """종료 시각이 하루 캡(22:00)을 넘겼는지. 일정은 10시에 시작하므로 자정을 넘겨 wrap된
+        시각(00:00~09:59)도 '초과'로 본다(_add_minutes가 25:00→01:00처럼 wrap하기 때문).
+        """
+        return end > _DAY_END_CAP or end < time(10, 0)
+
+    @staticmethod
+    def _is_night_view(stop, poi: POIOption | None) -> bool:
+        """야경·전망(나이트뷰)류인지 — title 키워드 또는 매칭 POI.type 키워드로 판정.
+
+        이런 곳만 22시 캡을 넘겨 늦게까지 허용한다(야경은 밤이라야 의미 있으니).
+        """
+        text = (stop.title or "").lower()
+        if poi:
+            text += " " + (poi.type or "").lower()
+        return any(k in text for k in _NIGHT_VIEW_KEYWORDS)
+
+    @staticmethod
+    def _is_anchor_stop(stop, poi: POIOption | None) -> bool:
+        """동선 anchor(공항·숙소/본거지/역)인지 — 이동 출발/도착점이라 캡 대상이 아니다."""
+        text = (stop.title or "").lower()
+        if poi:
+            text += " " + (poi.type or "").lower()
+        return any(k in text for k in _ANCHOR_KEYWORDS)
 
     def _arranged_item(
         self,

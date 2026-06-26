@@ -329,3 +329,134 @@ def test_parse_days_returns_none_for_empty_or_nonlist() -> None:
     assert itinerary_arranger._parse_days([], days_count=3) is None
     # 모든 날이 무효(stop 없음)면 None.
     assert itinerary_arranger._parse_days([{"day": 1, "stops": []}], days_count=3) is None
+
+
+# --- 22시 결정적 캡: 비-야경 관광은 22시 전에 잘리고, 야경·anchor·식사는 보존 ---
+
+
+def _late_arrangement() -> ArrangedDay:
+    # 길게 늘어져 22시를 넘기는 비-야경 stop들 + 야경 + 숙소 복귀(anchor).
+    return ArrangedDay(
+        day=3,
+        area="사도섬",
+        note="섬 당일치기",
+        stops=[
+            ArrangedStop("사도금산", 240, 60, "버스"),  # 10:00~14:00
+            ArrangedStop("도키노모리 공원", 240, 60, "버스"),  # 15:00~19:00
+            ArrangedStop("슈쿠네기 마을", 180, 60, "버스"),  # 20:00~23:00 → 캡, 제외
+            ArrangedStop("료쓰항 야경 전망대", 60, 30, "도보"),  # 야경 → 유지
+            ArrangedStop("숙소 부근(니가타역)", 30, 0, "제트포일"),  # anchor → 유지
+        ],
+        lunch=None,
+        dinner=None,
+    )
+
+
+def test_non_night_sightseeing_capped_at_22() -> None:
+    from datetime import time as time_cls
+
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(3, None, _late_arrangement(), {}, {}, _state())
+    titles = [item.title for item in day.items]
+    # 22시를 넘기는 비-야경 관광은 제외된다.
+    assert "슈쿠네기 마을" not in titles
+    # 야경 명소는 22시 넘겨도 유지된다.
+    assert any("야경" in t for t in titles)
+    # 숙소 복귀(anchor)는 유지된다 — 그날이 제대로 닫힌다.
+    assert any("숙소" in t for t in titles)
+    # 캡 이전 정상 관광은 그대로.
+    assert "사도금산" in titles and "도키노모리 공원" in titles
+    # 비-야경 관광 항목들은 22시 안에 끝난다.
+    sightseeing = [it for it in day.items if it.type == "관광지"]
+    assert all(it.end_time <= time_cls(22, 0) for it in sightseeing)
+
+
+def test_cap_preserves_meals() -> None:
+    from datetime import time as time_cls
+
+    # 점심·저녁이 있는 늦은 일정에서도 식사는 보존된다(캡은 관광에만 적용).
+    arranged = ArrangedDay(
+        day=2,
+        area="중심",
+        note=None,
+        stops=[
+            ArrangedStop("A", 240, 30, "도보"),  # 10:00~14:00
+            ArrangedStop("B", 240, 30, "도보"),  # 늦게
+            ArrangedStop("C", 180, 0, "도보"),  # 22시 초과 → 캡
+        ],
+        lunch="점심집",
+        dinner="저녁집",
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(2, None, arranged, {}, {}, _state())
+    meal_types = {m.meal_type for m in day.meals}
+    assert "lunch" in meal_types and "dinner" in meal_types
+    # 저녁 시작은 22시 캡 창 안(식사 start는 18~22시).
+    dinner = next(m for m in day.meals if m.meal_type == "dinner")
+    assert dinner.start_time <= time_cls(22, 0)
+
+
+def test_normal_day_not_affected_by_cap() -> None:
+    from datetime import time as time_cls
+
+    # 일찍 끝나는 평범한 날은 캡이 아무것도 떨구지 않는다.
+    arranged = ArrangedDay(
+        day=1, area="중심", note=None,
+        stops=[
+            ArrangedStop("A", 90, 15, "도보"),
+            ArrangedStop("B", 90, 15, "도보"),
+            ArrangedStop("C", 90, 0, "도보"),
+        ],
+        lunch=None, dinner=None,
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(1, None, arranged, {}, {}, _state())
+    assert [it.title for it in day.items] == ["A", "B", "C"]  # 모두 유지
+    assert all(it.end_time <= time_cls(22, 0) for it in day.items)
+
+
+def test_cap_catches_past_midnight_wrap() -> None:
+    from datetime import time as time_cls
+
+    # 사도섬 실제 버그 재현: 자정을 넘겨 wrap되는(예: 01:05) 비-야경 stop도 잘려야 한다.
+    # _add_minutes가 25:05→01:05로 wrap하므로 시각만 보면 22시보다 작아 보이는 함정.
+    arranged = ArrangedDay(
+        day=3, area="사도섬", note="섬",
+        stops=[
+            ArrangedStop("사도금산", 300, 120, "버스"),  # 10:00~15:00
+            ArrangedStop("슈쿠네기 마을", 300, 120, "버스"),  # 17:00~22:00 경계
+            ArrangedStop("료쓰항", 180, 60, "제트포일"),  # 자정 넘김 → 잘림
+            ArrangedStop("숙소 부근(니가타역)", 30, 0, "도보"),  # anchor 유지
+        ],
+        lunch=None, dinner=None,
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(3, None, arranged, {}, {}, _state())
+    # 자정을 넘기는 관광은 일정에 남지 않는다.
+    sightseeing = [it for it in day.items if it.type == "관광지"]
+    for it in sightseeing:
+        # 22시 이전이고 자정 wrap(00:00~09:59)도 아님.
+        assert it.end_time <= time_cls(22, 0)
+        assert it.end_time >= time_cls(10, 0)
+    assert any("숙소" in it.title for it in day.items)  # anchor 복귀는 유지
+
+
+def test_past_day_cap_helper_handles_wrap() -> None:
+    from datetime import time as time_cls
+
+    assert RouteAgent._past_day_cap(time_cls(22, 30)) is True  # 22시 직후
+    assert RouteAgent._past_day_cap(time_cls(1, 5)) is True  # 자정 넘겨 wrap(01:05)
+    assert RouteAgent._past_day_cap(time_cls(9, 0)) is True  # 10시 이전 = wrap
+    assert RouteAgent._past_day_cap(time_cls(21, 59)) is False  # 22시 직전 OK
+    assert RouteAgent._past_day_cap(time_cls(18, 0)) is False
+
+
+def test_night_view_detection() -> None:
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    assert agent._is_night_view(ArrangedStop("도쿄타워 전망대", 60, 0, "도보"), None)
+    assert agent._is_night_view(ArrangedStop("우메다 스카이빌딩 야경", 60, 0, "도보"), None)
+    assert not agent._is_night_view(ArrangedStop("기요미즈데라", 90, 0, "도보"), None)
+    # anchor 판정.
+    assert agent._is_anchor_stop(ArrangedStop("간사이공항(출국)", 30, 0, "전철"), None)
+    assert agent._is_anchor_stop(ArrangedStop("숙소 부근(난바역)", 30, 0, "도보"), None)
+    assert not agent._is_anchor_stop(ArrangedStop("도톤보리", 60, 0, "도보"), None)
