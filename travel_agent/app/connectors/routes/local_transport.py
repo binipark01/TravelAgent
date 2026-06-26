@@ -33,12 +33,16 @@ _DATA: dict[str, _CityTransport] = {
         "도쿄",
         "나리타/하네다 공항철도로 도심 이동, 시내는 Suica IC카드 + 지하철이 기본.",
         [
+            # 운행정보는 웹검색으로 확인한 실제 값(2026 기준 대략치). 확신 없으면 None으로 둔다.
             {"name": "케이세이 스카이라이너", "detail": "나리타공항→닛포리/우에노",
-             "price": "약 2,580엔", "duration": "약 41분"},
+             "price": "약 2,580엔", "duration": "약 41분",
+             "frequency": "약 20~40분 간격", "hours": "공항발 첫차 약 07:20·막차 약 23:00"},
             {"name": "나리타 익스프레스(N'EX)", "detail": "나리타공항→도쿄/신주쿠",
-             "price": "약 3,070엔", "duration": "약 60분"},
+             "price": "약 3,070엔", "duration": "약 60분",
+             "frequency": "약 30분 간격", "hours": "공항발 첫차 약 07:30·막차 약 21:45"},
             {"name": "게이큐선", "detail": "하네다공항→시나가와", "price": "약 330엔",
-             "duration": "약 15분"},
+             "duration": "약 15분",
+             "frequency": "약 10분 간격", "hours": "약 05:30~24:00"},
         ],
         [
             {"name": "Suica / PASMO (IC카드)",
@@ -55,11 +59,14 @@ _DATA: dict[str, _CityTransport] = {
         "간사이공항에서 난카이/JR로 시내 진입, 관광은 오사카 주유패스가 가성비 좋음.",
         [
             {"name": "난카이 라피트(특급)", "detail": "간사이공항→난바", "price": "약 1,450엔",
-             "duration": "약 38분"},
+             "duration": "약 38분",
+             "frequency": "약 30분 간격", "hours": "공항발 첫차 약 06:50·막차 약 23:00"},
+            # 공항급행은 정확한 운행간격 확인이 어려워 None으로 둔다(빈칸이 오답보다 낫다).
             {"name": "난카이 공항급행", "detail": "간사이공항→난바", "price": "약 970엔",
              "duration": "약 45분"},
             {"name": "JR 하루카(특급)", "detail": "간사이공항→신오사카/교토",
-             "price": "약 2,400엔", "duration": "약 50분"},
+             "price": "약 2,400엔", "duration": "약 50분",
+             "frequency": "약 30분 간격", "hours": "공항발 첫차 약 06:30·막차 약 22:15"},
         ],
         [
             {"name": "ICOCA (IC카드)", "detail": "간사이권 교통·편의점 충전식"},
@@ -75,7 +82,9 @@ _DATA: dict[str, _CityTransport] = {
         "신치토세공항에서 JR 쾌속으로 삿포로역 진입, 시내는 지하철 1일권이 편리.",
         [
             {"name": "JR 쾌속 에어포트", "detail": "신치토세공항→삿포로역", "price": "약 1,150엔",
-             "duration": "약 37분"},
+             "duration": "약 37분",
+             # 운행간격만 확인됨(약 15분). 정확한 막차 시각은 미확인이라 hours는 None.
+             "frequency": "약 15분 간격"},
             {"name": "공항 연락버스", "detail": "신치토세공항→삿포로 시내 주요 호텔",
              "price": "약 1,100엔", "duration": "약 70분"},
         ],
@@ -92,7 +101,8 @@ _DATA: dict[str, _CityTransport] = {
         "공항이 도심과 가까워 지하철 2정거장이면 하카타 도착. 시내 이동이 매우 편함.",
         [
             {"name": "공항선 지하철", "detail": "후쿠오카공항역→하카타/텐진", "price": "약 260엔",
-             "duration": "약 5~11분"},
+             "duration": "약 5~11분",
+             "frequency": "약 5~8분 간격", "hours": "공항발 약 05:43~24:00"},
         ],
         [
             {"name": "nimoca / Suica (IC카드)", "detail": "지하철·버스"},
@@ -123,7 +133,8 @@ _DATA: dict[str, _CityTransport] = {
         "수완나품은 공항철도(ARL), 시내는 BTS/MRT + Grab 조합이 가장 빠름.",
         [
             {"name": "ARL 공항철도", "detail": "수완나품공항→파야타이(BTS 환승)",
-             "price": "약 45밧", "duration": "약 30분"},
+             "price": "약 45밧", "duration": "약 30분",
+             "frequency": "약 10~15분 간격", "hours": "약 05:30~24:00"},
             {"name": "Grab / 택시", "detail": "돈므앙공항은 A1버스 또는 Grab 권장"},
         ],
         [
@@ -152,7 +163,8 @@ _DATA: dict[str, _CityTransport] = {
         "타오위안공항은 공항 MRT로 타이베이역 직결, 시내는 EasyCard + 메트로.",
         [
             {"name": "공항 MRT(직달차)", "detail": "타오위안공항→타이베이역",
-             "price": "약 150 NT$", "duration": "약 35분"},
+             "price": "약 150 NT$", "duration": "약 35분",
+             "frequency": "약 15분 간격", "hours": "타이베이역발 첫차 06:00·막차 23:00"},
         ],
         [
             {"name": "EasyCard(悠遊卡)", "detail": "메트로·버스·편의점·유바이크 충전식"},
@@ -166,7 +178,8 @@ _DATA: dict[str, _CityTransport] = {
         "창이공항에서 MRT로 시내 진입, 도시 전체가 MRT로 촘촘히 연결됨.",
         [
             {"name": "MRT", "detail": "창이공항→시내(타나메라 환승)", "price": "약 2 SGD",
-             "duration": "약 40분"},
+             "duration": "약 40분",
+             "frequency": "약 7~13분 간격(공항지선)", "hours": "약 05:30~23:50"},
             {"name": "택시 / Grab", "detail": "심야엔 MRT 미운행 — 택시/Grab"},
         ],
         [
@@ -181,7 +194,8 @@ _DATA: dict[str, _CityTransport] = {
         "에어포트 익스프레스로 센트럴 직결, 시내는 옥토퍼스 카드 하나로 모든 교통.",
         [
             {"name": "에어포트 익스프레스", "detail": "홍콩공항→센트럴/구룡",
-             "price": "약 115 HKD", "duration": "약 24분"},
+             "price": "약 115 HKD", "duration": "약 24분",
+             "frequency": "약 10~12분 간격", "hours": "약 05:54~00:48"},
             {"name": "공항버스(A21 등)", "detail": "저렴하지만 느림", "price": "약 33 HKD"},
         ],
         [

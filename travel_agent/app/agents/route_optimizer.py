@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 from math import ceil
 
 from travel_agent.app.connectors.nearby.day_trips import lookup_nearby
+from travel_agent.app.connectors.routes.local_transport import lookup_local_transport
 from travel_agent.app.connectors.weather.open_meteo import fetch_trip_weather
 from travel_agent.app.llm.curator import (
     curate_city_pois,
@@ -118,6 +119,8 @@ class RouteAgent:
                 )
 
         self._apply_weather(itinerary, weather)
+        # 공항↔본거지 이동에 정적 큐레이션 교통의 수단·운행간격을 결정적으로 반영(있을 때만).
+        self._apply_airport_transfer_info(itinerary, state)
         state.draft_itinerary = itinerary
         state.optimized_itinerary = itinerary
         return state
@@ -470,6 +473,65 @@ class RouteAgent:
         for day in itinerary.days:
             if day.date and day.date in weather:
                 day.weather = weather[day.date]
+
+    # 공항 이동 매칭 키워드(origin/destination에 있으면 공항 이동으로 본다).
+    _AIRPORT_KEYWORDS = ("공항", "空港", "airport")
+
+    def _apply_airport_transfer_info(self, itinerary, state: TripPlanState) -> None:
+        """첫날 도착(공항→본거지)·마지막날 출국(본거지→공항) 이동에 정적 큐레이션 교통의
+        수단명·운행간격을 결정적으로 붙인다. 외부 fetch 없음(정적 순수함수). 매칭되는 교통이
+        없거나 운행정보가 없으면 기존 mode를 그대로 둔다(폴백). 특정 출발시각은 만들지 않는다.
+        """
+        destination = state.primary_destination
+        if not destination:
+            return
+        plan = lookup_local_transport(destination)
+        if plan is None or not plan.airport_transfers:
+            return
+        # 운행간격(frequency)이 있는 교통만 후보로(빈칸은 안 붙인다). 가장 잘 맞는 하나를 고른다.
+        rail = [t for t in plan.airport_transfers if t.frequency]
+        if not rail:
+            return
+        for day in itinerary.days:
+            for transfer in day.transfers:
+                if not self._is_airport_transfer(transfer):
+                    continue
+                match = self._match_airport_transit(transfer, rail)
+                if match is None:
+                    continue
+                transfer.mode = self._enrich_mode(transfer.mode, transfer.travel_minutes, match)
+
+    def _is_airport_transfer(self, transfer) -> bool:  # noqa: ANN001 - TransferSegment
+        text = f"{transfer.origin} {transfer.destination}".lower()
+        return any(k in text for k in self._AIRPORT_KEYWORDS)
+
+    @staticmethod
+    def _match_airport_transit(transfer, rail: list):  # noqa: ANN001 - TransferSegment 등
+        """transfer의 mode 텍스트와 겹치는 교통수단을 우선 매칭(이름의 토큰 부분일치).
+        못 맞추면 첫 후보(대표 철도 노선)로 폴백 — 도시당 대표 공항철도가 가장 흔하다."""
+        mode_text = (transfer.mode or "").lower()
+        for item in rail:
+            # 노선명 토큰(괄호·공백 분리) 중 하나라도 mode에 들어 있으면 매칭.
+            tokens = [
+                tok
+                for tok in item.name.replace("(", " ").replace(")", " ").split()
+                if len(tok) >= 2
+            ]
+            if any(tok.lower() in mode_text for tok in tokens):
+                return item
+        return rail[0]
+
+    @staticmethod
+    def _enrich_mode(mode: str, travel_minutes: int, item) -> str:  # noqa: ANN001 - LocalTransportItem
+        """mode 텍스트에 '수단명 · 운행간격'을 덧붙인다(이미 들어있으면 중복 추가 안 함).
+        예: '전철' → '난카이 라피트(특급) · 약 30분 간격'. 특정 출발시각은 만들지 않는다."""
+        freq = item.frequency
+        # 이미 운행간격 정보가 붙어 있으면(재실행 등) 중복 방지.
+        if freq and freq in (mode or ""):
+            return mode
+        # 수단명이 mode에 없으면 수단명을 앞세우고, 있으면 mode를 유지한 채 간격만 덧붙인다.
+        base = mode if (mode and item.name.split("(")[0].strip() in mode) else item.name
+        return f"{base} · {freq}" if freq else base
 
     def _apply_edits(self, pois: list[POIOption], brief) -> list[POIOption]:
         """대화형 수정 반영: must_avoid는 제외, must_include는 앞으로 올린다(부분일치)."""

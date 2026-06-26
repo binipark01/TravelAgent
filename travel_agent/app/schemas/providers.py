@@ -133,6 +133,8 @@ class LocalTransportItem(StrictBaseModel):
     detail: str | None = None
     price: str | None = None
     duration: str | None = None
+    frequency: str | None = None  # 운행 간격(예: "약 15~20분"). 모르면 None(빈칸이 오답보다 낫다).
+    hours: str | None = None  # 운행 시간(예: "첫차 05:45·막차 23:55"). 모르면 None.
     source_url: str | None = None
 
 
