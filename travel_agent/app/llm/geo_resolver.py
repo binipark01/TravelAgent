@@ -10,9 +10,10 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
-from travel_agent.app.agents.llm_client import codex_brief_available, run_codex_json
+from travel_agent.app.agents.llm_client import live_llm_local_enabled, run_codex_json
 from travel_agent.app.config import get_settings
 
 
@@ -43,7 +44,9 @@ _PROMPT = (
 )
 
 # 같은 프로세스에서 같은 지명을 반복 조회하지 않도록 캐시(성공/실패 모두 기억).
+# 비자·FX·안전·항공이 동시에 resolve_place를 부를 수 있어 락으로 dict race를 닫는다.
 _CACHE: dict[str, ResolvedPlace | None] = {}
+_CACHE_LOCK = threading.Lock()
 
 
 def _normalize(name: str) -> str:
@@ -60,9 +63,8 @@ def _valid_iata(code: str) -> bool:
 
 def _llm_resolve(name: str) -> ResolvedPlace | None:
     settings = get_settings()
-    if not settings.enable_live_llm:
-        return None
-    if not codex_brief_available(settings.codex_cli_command):
+    # 공항코드·국가는 보편 지리지식이라 웹검색 불필요 → 로컬 게이트.
+    if not live_llm_local_enabled(settings):
         return None
     data = run_codex_json(
         _PROMPT + name,
@@ -96,13 +98,19 @@ def resolve_place(name: str | None) -> ResolvedPlace | None:
     if not name or not name.strip():
         return None
     key = _normalize(name)
-    if key in _CACHE:
-        return _CACHE[key]
+    # 캐시는 None(=해석 실패)도 의미 있게 기억하므로 멤버십(in)으로 확인한다.
+    # read/write만 락으로 보호하고 LLM 호출은 락 밖에서 한다(같은 키 동시 cold-miss는
+    # 드물게 중복 호출될 수 있으나 결과는 동일).
+    with _CACHE_LOCK:
+        if key in _CACHE:
+            return _CACHE[key]
     resolved = _llm_resolve(name)
-    _CACHE[key] = resolved
+    with _CACHE_LOCK:
+        _CACHE[key] = resolved
     return resolved
 
 
 def clear_cache() -> None:
     """테스트용: 해석 캐시를 비운다."""
-    _CACHE.clear()
+    with _CACHE_LOCK:
+        _CACHE.clear()

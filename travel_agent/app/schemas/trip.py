@@ -79,6 +79,20 @@ class TripPlanState(StrictBaseModel):
     clarification: str | None = None
     status: TripStatus = TripStatus.intake
 
+    @property
+    def primary_destination(self) -> str | None:
+        """일정·횡단정보의 기준 도시. 선택된 목적지 우선, 없으면 brief 첫 후보.
+
+        13곳에 흩어져 있던 `selected_destination or (brief.destinations[0] ...)` 보일러플레이트를
+        한 곳으로 모아, 멀티시티/도시전환 규칙이 바뀌어도 여기만 고치면 되게 한다.
+        property라 Pydantic 필드가 아니어서 직렬화(응답 shape)에 영향 없다.
+        """
+        if self.selected_destination:
+            return self.selected_destination
+        if self.brief and self.brief.destinations:
+            return self.brief.destinations[0]
+        return None
+
 
 class TripCreateRequest(StrictBaseModel):
     message: str

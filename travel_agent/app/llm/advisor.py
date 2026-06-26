@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from travel_agent.app.agents.llm_client import codex_brief_available, run_codex_json
+from travel_agent.app.agents.llm_client import live_llm_local_enabled, run_codex_json
 from travel_agent.app.config import get_settings
 from travel_agent.app.schemas.providers import AccommodationOption, FlightOption
 
@@ -22,7 +22,8 @@ def estimate_daily_costs(
     고정 6만/1.5만원은 유럽엔 너무 적고 동남아엔 너무 많다. 도시 물가를 LLM이 추정한다.
     """
     settings = get_settings()
-    if not settings.enable_live_llm or not codex_brief_available(settings.codex_cli_command):
+    # 도시 물가 추정은 보편 지식이라 웹검색 불필요 → 로컬 게이트.
+    if not live_llm_local_enabled(settings):
         return None
     style = travel_style or "보통"
     prompt = (
@@ -55,7 +56,8 @@ def _advise(items: list[tuple[str, str]], *, kind_label: str, context: str) -> d
     if not items:
         return {}
     settings = get_settings()
-    if not settings.enable_live_llm or not codex_brief_available(settings.codex_cli_command):
+    # 주어진 후보만 보고 한 줄 평을 다는 거라 웹검색 불필요 → 로컬 게이트.
+    if not live_llm_local_enabled(settings):
         return {}
     lines = "\n".join(f"- [{item_id}] {text}" for item_id, text in items[:8])
     prompt = (

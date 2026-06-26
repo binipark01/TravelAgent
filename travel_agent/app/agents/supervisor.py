@@ -516,9 +516,7 @@ class TravelSupervisorAgent:
         brief = state.brief
         if not brief:
             return ""
-        destination = state.selected_destination or (
-            brief.destinations[0] if brief.destinations else None
-        )
+        destination = state.primary_destination
 
         def join(*parts) -> str:
             return "|".join("" if part is None else str(part) for part in parts)

@@ -29,9 +29,7 @@ class BudgetAgent:
         accommodation = min(hotel_totals) if hotel_totals else 0
         has_live = bool(state.transport_options or state.accommodation_options)
         # 1인 1일 식비·현지교통: 도시 물가를 LLM이 추정(실패 시 기본값). 유럽/동남아 편차 반영.
-        destination = state.selected_destination or (
-            brief.destinations[0] if brief and brief.destinations else ""
-        )
+        destination = state.primary_destination or ""
         daily = estimate_daily_costs(
             destination, travel_style=brief.travel_style if brief else None, currency=state.currency
         )

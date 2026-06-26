@@ -11,11 +11,14 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from typing import TypeVar
 from urllib.parse import quote_plus
 
-from travel_agent.app.agents.llm_client import codex_brief_available, run_codex_json
+from travel_agent.app.agents.llm_client import live_llm_web_enabled, run_codex_json
 from travel_agent.app.config import Settings, get_settings
 from travel_agent.app.llm.source_guide import source_hints_block
 from travel_agent.app.schemas.common import Location, Money, SourceRef
@@ -63,24 +66,44 @@ _MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
 _EVENTS_CACHE: dict[str, LocalEventsGuide] = {}
 _COMPANION_CACHE: dict[str, list[CompanionCity]] = {}
 
+# route_optimizer._prefetch_route_lookups가 근교·숙박구역·동반도시 큐레이션을 병렬로 돌려
+# 이 모듈의 캐시에 동시에 접근한다. 락으로 check-then-set의 dict race를 닫는다.
+_CACHE_LOCK = threading.Lock()
+
+_T = TypeVar("_T")
+
+
+def _cached(cache: dict[str, _T], key: str, compute: Callable[[], _T | None]) -> _T | None:
+    """캐시 read/write만 락으로 보호한다(compute=LLM 호출은 락 밖에서).
+
+    트레이드오프: cold 캐시에서 동일 키로 동시에 들어온 두 호출이 각자 compute할 수 있다
+    (드물고 결과는 동일). 대신 compute(수십 초 웹검색)를 락 안에서 잡지 않아 서로 다른 키의
+    병렬 큐레이션이 직렬화되지 않는다 — _prefetch_route_lookups의 병렬성을 살린다.
+    """
+    with _CACHE_LOCK:
+        if key in cache:
+            return cache[key]
+    result = compute()
+    if result is not None:
+        with _CACHE_LOCK:
+            cache[key] = result
+    return result
+
 
 def clear_cache() -> None:
     """테스트용: 큐레이션 캐시를 비운다."""
-    _CITY_CACHE.clear()
-    _NEARBY_CACHE.clear()
-    _STAY_CACHE.clear()
-    _CHECK_CACHE.clear()
-    _MULTICITY_CACHE.clear()
-    _EVENTS_CACHE.clear()
-    _COMPANION_CACHE.clear()
+    with _CACHE_LOCK:
+        _CITY_CACHE.clear()
+        _NEARBY_CACHE.clear()
+        _STAY_CACHE.clear()
+        _CHECK_CACHE.clear()
+        _MULTICITY_CACHE.clear()
+        _EVENTS_CACHE.clear()
+        _COMPANION_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
-    return (
-        settings.enable_live_llm
-        and settings.codex_oauth_enable_web_search
-        and codex_brief_available(settings.codex_cli_command)
-    )
+    return live_llm_web_enabled(settings)
 
 
 def _run(prompt: str, settings: Settings) -> dict | None:
@@ -207,6 +230,12 @@ def _season_hint(start_date: date | None) -> str:
     return f" 여행 시기는 {start_date.year}년 {start_date.month}월경이다."
 
 
+def _season_key(start_date: date | None) -> str:
+    """캐시 키에 넣을 시즌(월). 프롬프트는 시즌을 반영하므로 키에도 넣어야
+    첫 호출의 시즌(예: 6월 추천)이 다른 달 요청에 고착되지 않는다."""
+    return str(start_date.month) if start_date else ""
+
+
 def curate_city_pois(
     destination: str,
     *,
@@ -221,9 +250,10 @@ def curate_city_pois(
     if not _enabled(settings):
         return None
     interest_text = ", ".join(i for i in interests if i and i.strip()) or "특별한 제약 없음"
-    cache_key = f"{destination.strip().lower()}|{interest_text}"
-    if cache_key in _CITY_CACHE:
-        return _CITY_CACHE[cache_key]
+    # 시즌(월)·통화를 키에 포함 — 프롬프트가 둘에 의존하므로 첫 호출 값이 고착되면 안 된다.
+    cache_key = (
+        f"{destination.strip().lower()}|{interest_text}|{_season_key(start_date)}|{currency}"
+    )
 
     prompt = (
         "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 네이버 블로그·카페, "
@@ -266,26 +296,27 @@ def curate_city_pois(
         "관광지 8~14곳, 맛집 8~12곳(인기 명소가 많은 대도시는 넉넉히, 명소가 적은 작은 도시는 "
         "진짜 갈 만한 곳만 적게 — niche padding 금지)."
     )
-    data = _run(prompt, settings)
-    if not isinstance(data, dict):
-        return None
-    attractions = [
-        poi
-        for raw in (data.get("attractions") or [])
-        if isinstance(raw, dict)
-        and (poi := _poi_from_item(raw, destination, currency, default_type="관광지"))
-    ]
-    restaurants = [
-        poi
-        for raw in (data.get("restaurants") or [])
-        if isinstance(raw, dict)
-        and (poi := _poi_from_item(raw, destination, currency, default_type="맛집"))
-    ]
-    if not attractions and not restaurants:
-        return None
-    curated = CuratedPois(attractions=attractions, restaurants=restaurants)
-    _CITY_CACHE[cache_key] = curated
-    return curated
+    def compute() -> CuratedPois | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        attractions = [
+            poi
+            for raw in (data.get("attractions") or [])
+            if isinstance(raw, dict)
+            and (poi := _poi_from_item(raw, destination, currency, default_type="관광지"))
+        ]
+        restaurants = [
+            poi
+            for raw in (data.get("restaurants") or [])
+            if isinstance(raw, dict)
+            and (poi := _poi_from_item(raw, destination, currency, default_type="맛집"))
+        ]
+        if not attractions and not restaurants:
+            return None
+        return CuratedPois(attractions=attractions, restaurants=restaurants)
+
+    return _cached(_CITY_CACHE, cache_key, compute)
 
 
 def curate_nearby(destination: str) -> NearbyGuide | None:
@@ -294,8 +325,6 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
     if not _enabled(settings):
         return None
     cache_key = destination.strip().lower()
-    if cache_key in _NEARBY_CACHE:
-        return _NEARBY_CACHE[cache_key]
 
     prompt = (
         "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 네이버 블로그·카페, "
@@ -316,43 +345,44 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
         "}\n"
         "근교 3~6곳."
     )
-    data = _run(prompt, settings)
-    if not isinstance(data, dict):
-        return None
-    raw_destinations = data.get("destinations")
-    if not isinstance(raw_destinations, list) or not raw_destinations:
-        return None
-    destinations: list[NearbyDestination] = []
-    for raw in raw_destinations:
-        if not isinstance(raw, dict):
-            continue
-        name = raw.get("name")
-        if not isinstance(name, str) or not name.strip():
-            continue
-        sources = _clean_list(raw.get("sources"))
-        destinations.append(
-            NearbyDestination(
-                name=name.strip(),
-                travel_time=(raw.get("travel_time") or "이동시간 확인 필요").strip(),
-                transport=(raw.get("transport") or "교통편 확인 필요").strip(),
-                highlights=_clean_list(raw.get("highlights")),
-                best_for=(raw.get("best_for") or "").strip() or None,
-                source_url=sources[0] if sources else None,
+    def compute() -> NearbyGuide | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        raw_destinations = data.get("destinations")
+        if not isinstance(raw_destinations, list) or not raw_destinations:
+            return None
+        destinations: list[NearbyDestination] = []
+        for raw in raw_destinations:
+            if not isinstance(raw, dict):
+                continue
+            name = raw.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            sources = _clean_list(raw.get("sources"))
+            destinations.append(
+                NearbyDestination(
+                    name=name.strip(),
+                    travel_time=(raw.get("travel_time") or "이동시간 확인 필요").strip(),
+                    transport=(raw.get("transport") or "교통편 확인 필요").strip(),
+                    highlights=_clean_list(raw.get("highlights")),
+                    best_for=(raw.get("best_for") or "").strip() or None,
+                    source_url=sources[0] if sources else None,
+                )
             )
+        if not destinations:
+            return None
+        hub = (data.get("hub") or destination).strip() or destination
+        summary = (data.get("summary") or f"{hub} 근교 당일치기 추천").strip()
+        return NearbyGuide(
+            hub=hub,
+            summary=summary,
+            destinations=destinations,
+            source_url=destinations[0].source_url,
+            metadata=_llm_metadata(destinations[0].source_url or _maps_url(hub, destination)),
         )
-    if not destinations:
-        return None
-    hub = (data.get("hub") or destination).strip() or destination
-    summary = (data.get("summary") or f"{hub} 근교 당일치기 추천").strip()
-    guide = NearbyGuide(
-        hub=hub,
-        summary=summary,
-        destinations=destinations,
-        source_url=destinations[0].source_url,
-        metadata=_llm_metadata(destinations[0].source_url or _maps_url(hub, destination)),
-    )
-    _NEARBY_CACHE[cache_key] = guide
-    return guide
+
+    return _cached(_NEARBY_CACHE, cache_key, compute)
 
 
 def curate_stay_areas(destination: str) -> StayAreaGuide | None:
@@ -361,8 +391,6 @@ def curate_stay_areas(destination: str) -> StayAreaGuide | None:
     if not _enabled(settings):
         return None
     cache_key = destination.strip().lower()
-    if cache_key in _STAY_CACHE:
-        return _STAY_CACHE[cache_key]
 
     prompt = (
         "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 네이버 블로그·카페, "
@@ -381,41 +409,42 @@ def curate_stay_areas(destination: str) -> StayAreaGuide | None:
         "}\n"
         "구역 3~5곳."
     )
-    data = _run(prompt, settings)
-    if not isinstance(data, dict):
-        return None
-    raw_areas = data.get("areas")
-    if not isinstance(raw_areas, list) or not raw_areas:
-        return None
-    areas: list[StayArea] = []
-    for raw in raw_areas:
-        if not isinstance(raw, dict):
-            continue
-        name = raw.get("name")
-        if not isinstance(name, str) or not name.strip():
-            continue
-        areas.append(
-            StayArea(
-                name=name.strip(),
-                vibe=(raw.get("vibe") or "").strip(),
-                good_for=_clean_list(raw.get("good_for")),
-                note=_clean_str(raw.get("note")),
-                source_url=_clean_str(raw.get("source_url")),
+    def compute() -> StayAreaGuide | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        raw_areas = data.get("areas")
+        if not isinstance(raw_areas, list) or not raw_areas:
+            return None
+        areas: list[StayArea] = []
+        for raw in raw_areas:
+            if not isinstance(raw, dict):
+                continue
+            name = raw.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            areas.append(
+                StayArea(
+                    name=name.strip(),
+                    vibe=(raw.get("vibe") or "").strip(),
+                    good_for=_clean_list(raw.get("good_for")),
+                    note=_clean_str(raw.get("note")),
+                    source_url=_clean_str(raw.get("source_url")),
+                )
             )
+        if not areas:
+            return None
+        summary = (data.get("summary") or f"{destination} 추천 숙박 구역").strip()
+        first_source = next((a.source_url for a in areas if a.source_url), None)
+        return StayAreaGuide(
+            destination=destination,
+            summary=summary,
+            areas=areas,
+            source_url=first_source,
+            metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
         )
-    if not areas:
-        return None
-    summary = (data.get("summary") or f"{destination} 추천 숙박 구역").strip()
-    first_source = next((a.source_url for a in areas if a.source_url), None)
-    guide = StayAreaGuide(
-        destination=destination,
-        summary=summary,
-        areas=areas,
-        source_url=first_source,
-        metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
-    )
-    _STAY_CACHE[cache_key] = guide
-    return guide
+
+    return _cached(_STAY_CACHE, cache_key, compute)
 
 
 def curate_companion_cities(destination: str, days_count: int) -> list[CompanionCity]:
@@ -428,8 +457,9 @@ def curate_companion_cities(destination: str, days_count: int) -> list[Companion
     if not _enabled(settings) or days_count < 3:
         return []
     cache_key = f"{destination.strip().lower()}|{days_count}"
-    if cache_key in _COMPANION_CACHE:
-        return _COMPANION_CACHE[cache_key]
+    with _CACHE_LOCK:
+        if cache_key in _COMPANION_CACHE:
+            return _COMPANION_CACHE[cache_key]
 
     # 본거지가 일정의 과반이 되도록 동반 도시 일수 합을 제한(4일→1, 7일→2, 10일→3).
     cap = max(1, (days_count - 1) // 3)
@@ -481,8 +511,10 @@ def curate_companion_cities(destination: str, days_count: int) -> list[Companion
                 source_url=source_url,
             )
         )
-    _COMPANION_CACHE[cache_key] = companions[:2]
-    return _COMPANION_CACHE[cache_key]
+    result = companions[:2]
+    with _CACHE_LOCK:
+        _COMPANION_CACHE[cache_key] = result
+    return result
 
 
 def curate_events(
@@ -503,8 +535,6 @@ def curate_events(
         date_label = ""
         when = "구체적 날짜를 모르니 그 도시의 대표적인 시즌 축제·연례 행사를 알려줘라."
     cache_key = f"{destination.strip().lower()}|{date_label}"
-    if cache_key in _EVENTS_CACHE:
-        return _EVENTS_CACHE[cache_key]
 
     prompt = (
         "너는 한국인 여행자를 위한 현지 큐레이터다. live web search로 관광청·공식 행사 페이지, "
@@ -527,45 +557,46 @@ def curate_events(
         "}\n"
         "행사 최대 6개, 여행 기간과 가까운 순."
     )
-    data = _run(prompt, settings)
-    if not isinstance(data, dict):
-        return None
-    raw_events = data.get("events")
-    if not isinstance(raw_events, list):
-        return None
-    events: list[LocalEvent] = []
-    for raw in raw_events:
-        if not isinstance(raw, dict):
-            continue
-        name = raw.get("name")
-        source_url = _clean_str(raw.get("source_url"))
-        # 출처 없는 행사는 신뢰할 수 없으니 버린다(없는 행사 지어내기 방지).
-        if not isinstance(name, str) or not name.strip() or not source_url:
-            continue
-        events.append(
-            LocalEvent(
-                name=name.strip(),
-                category=(raw.get("category") or "행사").strip(),
-                period=(raw.get("period") or "").strip(),
-                venue=_clean_str(raw.get("venue")),
-                highlight=_clean_str(raw.get("highlight")),
-                source_url=source_url,
+    def compute() -> LocalEventsGuide | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        raw_events = data.get("events")
+        if not isinstance(raw_events, list):
+            return None
+        events: list[LocalEvent] = []
+        for raw in raw_events:
+            if not isinstance(raw, dict):
+                continue
+            name = raw.get("name")
+            source_url = _clean_str(raw.get("source_url"))
+            # 출처 없는 행사는 신뢰할 수 없으니 버린다(없는 행사 지어내기 방지).
+            if not isinstance(name, str) or not name.strip() or not source_url:
+                continue
+            events.append(
+                LocalEvent(
+                    name=name.strip(),
+                    category=(raw.get("category") or "행사").strip(),
+                    period=(raw.get("period") or "").strip(),
+                    venue=_clean_str(raw.get("venue")),
+                    highlight=_clean_str(raw.get("highlight")),
+                    source_url=source_url,
+                )
             )
+        if not events:
+            return None
+        summary = (data.get("summary") or f"{destination} 여행 기간 행사").strip()
+        first_source = next((e.source_url for e in events if e.source_url), None)
+        return LocalEventsGuide(
+            destination=destination,
+            date_range=date_label,
+            summary=summary,
+            events=events,
+            source_url=first_source,
+            metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
         )
-    if not events:
-        return None
-    summary = (data.get("summary") or f"{destination} 여행 기간 행사").strip()
-    first_source = next((e.source_url for e in events if e.source_url), None)
-    guide = LocalEventsGuide(
-        destination=destination,
-        date_range=date_label,
-        summary=summary,
-        events=events,
-        source_url=first_source,
-        metadata=_llm_metadata(first_source or _maps_url(destination, destination)),
-    )
-    _EVENTS_CACHE[cache_key] = guide
-    return guide
+
+    return _cached(_EVENTS_CACHE, cache_key, compute)
 
 
 def curate_checklist(destination: str, *, context: str) -> PrepChecklist | None:
@@ -578,8 +609,6 @@ def curate_checklist(destination: str, *, context: str) -> PrepChecklist | None:
     if not _enabled(settings):
         return None
     cache_key = f"{destination.strip().lower()}|{context}"
-    if cache_key in _CHECK_CACHE:
-        return _CHECK_CACHE[cache_key]
 
     prompt = (
         "너는 한국인 여행자를 위한 출발 전 준비물·체크리스트 도우미다. 아래 여행에 맞춰 "
@@ -595,37 +624,38 @@ def curate_checklist(destination: str, *, context: str) -> PrepChecklist | None:
         "}\n"
         "카테고리 4~7개, 각 항목은 짧게."
     )
-    data = run_codex_json(
-        prompt,
-        command=settings.codex_cli_command,
-        model=settings.codex_oauth_model,
-        reasoning_effort=settings.codex_reasoning_effort,
-        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 90),
-    )
-    if not isinstance(data, dict):
-        return None
-    raw_groups = data.get("groups")
-    if not isinstance(raw_groups, list) or not raw_groups:
-        return None
-    groups: list[PrepGroup] = []
-    for raw in raw_groups:
-        if not isinstance(raw, dict):
-            continue
-        title = _clean_str(raw.get("title"))
-        items = _clean_list(raw.get("items"))
-        if title and items:
-            groups.append(PrepGroup(title=title, items=items[:8]))
-    if not groups:
-        return None
-    summary = (data.get("summary") or f"{destination} 여행 준비물").strip()
-    checklist = PrepChecklist(
-        destination=destination,
-        summary=summary,
-        groups=groups,
-        metadata=_llm_metadata(_maps_url(destination, destination)),
-    )
-    _CHECK_CACHE[cache_key] = checklist
-    return checklist
+    def compute() -> PrepChecklist | None:
+        data = run_codex_json(
+            prompt,
+            command=settings.codex_cli_command,
+            model=settings.codex_oauth_model,
+            reasoning_effort=settings.codex_reasoning_effort,
+            timeout_seconds=min(settings.codex_oauth_timeout_seconds, 90),
+        )
+        if not isinstance(data, dict):
+            return None
+        raw_groups = data.get("groups")
+        if not isinstance(raw_groups, list) or not raw_groups:
+            return None
+        groups: list[PrepGroup] = []
+        for raw in raw_groups:
+            if not isinstance(raw, dict):
+                continue
+            title = _clean_str(raw.get("title"))
+            items = _clean_list(raw.get("items"))
+            if title and items:
+                groups.append(PrepGroup(title=title, items=items[:8]))
+        if not groups:
+            return None
+        summary = (data.get("summary") or f"{destination} 여행 준비물").strip()
+        return PrepChecklist(
+            destination=destination,
+            summary=summary,
+            groups=groups,
+            metadata=_llm_metadata(_maps_url(destination, destination)),
+        )
+
+    return _cached(_CHECK_CACHE, cache_key, compute)
 
 
 def _coerce_nights(value: object, default: int) -> int:
@@ -648,8 +678,6 @@ def curate_multicity(
         return None
     cities = ", ".join(destinations)
     cache_key = cities.lower()
-    if cache_key in _MULTICITY_CACHE:
-        return _MULTICITY_CACHE[cache_key]
 
     days_hint = f"총 {total_days}일을 도시별로 합리적으로 배분하라." if total_days else ""
     prompt = (
@@ -666,49 +694,50 @@ def curate_multicity(
         '  "tips": ["도시간 이동권은 미리 예매가 저렴"]\n'
         "}"
     )
-    data = _run(prompt, settings)
-    if not isinstance(data, dict):
-        return None
-    segments: list[CitySegment] = []
-    for raw in data.get("segments") or []:
-        if not isinstance(raw, dict):
-            continue
-        city = _clean_str(raw.get("city"))
-        if not city:
-            continue
-        segments.append(
-            CitySegment(
-                city=city,
-                nights=_coerce_nights(raw.get("nights"), 2),
-                highlights=_clean_list(raw.get("highlights")),
+    def compute() -> MultiCityPlan | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        segments: list[CitySegment] = []
+        for raw in data.get("segments") or []:
+            if not isinstance(raw, dict):
+                continue
+            city = _clean_str(raw.get("city"))
+            if not city:
+                continue
+            segments.append(
+                CitySegment(
+                    city=city,
+                    nights=_coerce_nights(raw.get("nights"), 2),
+                    highlights=_clean_list(raw.get("highlights")),
+                )
             )
-        )
-    if not segments:
-        return None
-    legs: list[IntercityLeg] = []
-    for raw in data.get("legs") or []:
-        if not isinstance(raw, dict):
-            continue
-        origin = _clean_str(raw.get("origin"))
-        dest = _clean_str(raw.get("destination"))
-        if not origin or not dest:
-            continue
-        legs.append(
-            IntercityLeg(
-                origin=origin,
-                destination=dest,
-                mode=(raw.get("mode") or "이동").strip() or "이동",
-                duration=(raw.get("duration") or "소요시간 확인").strip() or "소요시간 확인",
-                booking_hint=_clean_str(raw.get("booking_hint")),
+        if not segments:
+            return None
+        legs: list[IntercityLeg] = []
+        for raw in data.get("legs") or []:
+            if not isinstance(raw, dict):
+                continue
+            origin = _clean_str(raw.get("origin"))
+            dest = _clean_str(raw.get("destination"))
+            if not origin or not dest:
+                continue
+            legs.append(
+                IntercityLeg(
+                    origin=origin,
+                    destination=dest,
+                    mode=(raw.get("mode") or "이동").strip() or "이동",
+                    duration=(raw.get("duration") or "소요시간 확인").strip() or "소요시간 확인",
+                    booking_hint=_clean_str(raw.get("booking_hint")),
+                )
             )
+        return MultiCityPlan(
+            destinations=destinations,
+            summary=(data.get("summary") or f"{cities} 멀티시티 동선").strip(),
+            segments=segments,
+            legs=legs,
+            tips=_clean_list(data.get("tips")),
+            metadata=_llm_metadata(_maps_url(destinations[0], destinations[0])),
         )
-    plan = MultiCityPlan(
-        destinations=destinations,
-        summary=(data.get("summary") or f"{cities} 멀티시티 동선").strip(),
-        segments=segments,
-        legs=legs,
-        tips=_clean_list(data.get("tips")),
-        metadata=_llm_metadata(_maps_url(destinations[0], destinations[0])),
-    )
-    _MULTICITY_CACHE[cache_key] = plan
-    return plan
+
+    return _cached(_MULTICITY_CACHE, cache_key, compute)

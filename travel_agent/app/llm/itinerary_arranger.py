@@ -11,10 +11,15 @@ None을 돌려주어 RouteAgent가 기존 휴리스틱으로 폴백한다(오프
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from datetime import date
 
-from travel_agent.app.agents.llm_client import codex_brief_available, run_codex_json
+from travel_agent.app.agents.llm_client import (
+    live_llm_local_enabled,
+    live_llm_web_enabled,
+    run_codex_json,
+)
 from travel_agent.app.config import get_settings
 from travel_agent.app.schemas.providers import POIOption
 
@@ -43,8 +48,8 @@ class ArrangedItinerary:
 
 
 def _enabled() -> bool:
-    settings = get_settings()
-    return settings.enable_live_llm and codex_brief_available(settings.codex_cli_command)
+    # arrange_itinerary는 주어진 후보만 배치(웹검색 불필요) → 로컬 게이트.
+    return live_llm_local_enabled(get_settings())
 
 
 def _pool_block(pool: list[POIOption], limit: int) -> str:
@@ -172,10 +177,13 @@ def _parse_days(raw_days: object, days_count: int) -> ArrangedItinerary | None:
 
 
 _COMMUNITY_COURSE_CACHE: dict[str, ArrangedItinerary] = {}
+# RouteAgent가 여러 run에서 동시에 이 캐시를 칠 수 있어 락으로 dict race를 닫는다.
+_COMMUNITY_COURSE_LOCK = threading.Lock()
 
 
 def clear_community_cache() -> None:
-    _COMMUNITY_COURSE_CACHE.clear()
+    with _COMMUNITY_COURSE_LOCK:
+        _COMMUNITY_COURSE_CACHE.clear()
 
 
 def curate_community_course(
@@ -192,17 +200,16 @@ def curate_community_course(
     arrange_itinerary로 폴백.
     """
     settings = get_settings()
-    if (
-        not settings.enable_live_llm
-        or not settings.codex_oauth_enable_web_search
-        or not codex_brief_available(settings.codex_cli_command)
-        or days_count < 1
-    ):
+    # 실후기 코스를 웹검색으로 종합 → 웹 게이트.
+    if not live_llm_web_enabled(settings) or days_count < 1:
         return None
     interest_text = ", ".join(i for i in (interests or []) if i and i.strip()) or "제약 없음"
-    cache_key = f"{destination.strip().lower()}|{days_count}|{interest_text}"
-    if cache_key in _COMMUNITY_COURSE_CACHE:
-        return _COMMUNITY_COURSE_CACHE[cache_key]
+    # 시즌(월)을 키에 포함 — 프롬프트가 시즌을 반영하므로 첫 호출 달이 고착되면 안 된다.
+    season_key = str(start_date.month) if start_date else ""
+    cache_key = f"{destination.strip().lower()}|{days_count}|{interest_text}|{season_key}"
+    with _COMMUNITY_COURSE_LOCK:
+        if cache_key in _COMMUNITY_COURSE_CACHE:
+            return _COMMUNITY_COURSE_CACHE[cache_key]
     season = f" 여행 시기는 {start_date.year}년 {start_date.month}월경." if start_date else ""
 
     prompt = (
@@ -254,7 +261,8 @@ def curate_community_course(
         return None
     course = _parse_days(data.get("days"), days_count)
     if course is not None:
-        _COMMUNITY_COURSE_CACHE[cache_key] = course
+        with _COMMUNITY_COURSE_LOCK:
+            _COMMUNITY_COURSE_CACHE[cache_key] = course
     return course
 
 

@@ -93,3 +93,55 @@ def test_resolve_country_keeps_catalog_priority(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(geo_resolver, "resolve_place", boom)
     assert visa.resolve_country("도쿄") == "일본"
     assert visa.resolve_country("Osaka, Japan") == "일본"
+
+
+# --- A1: _llm_resolve의 라이브 JSON 파싱 검증 (게이트 활성 + run_codex_json 가짜) ---
+
+
+def _enable_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(geo_resolver, "live_llm_local_enabled", lambda settings: True)
+
+
+def test_llm_resolve_parses_valid_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_local(monkeypatch)
+    fake = {
+        "country_ko": "일본",
+        "iata": "ngo",  # 소문자도 대문자로 정규화돼야 한다
+        "skyscanner": None,  # 없으면 iata 소문자로 채워진다
+        "hub_note": "나고야 경유 추천",
+    }
+    monkeypatch.setattr(geo_resolver, "run_codex_json", lambda *a, **k: fake)
+    resolved = geo_resolver.resolve_place("시즈오카")
+    assert resolved is not None
+    assert resolved.country_ko == "일본"
+    assert resolved.iata == "NGO"
+    assert resolved.skyscanner == "ngo"
+    assert resolved.hub_note == "나고야 경유 추천"
+
+
+def test_llm_resolve_drops_invalid_iata(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_local(monkeypatch)
+    # 3레터·알파벳이 아니면 iata는 버린다. country가 있으면 결과는 유지.
+    fake = {"country_ko": "일본", "iata": "TOKYO", "skyscanner": None, "hub_note": None}
+    monkeypatch.setattr(geo_resolver, "run_codex_json", lambda *a, **k: fake)
+    resolved = geo_resolver.resolve_place("도쿄근교")
+    assert resolved is not None
+    assert resolved.iata is None
+    assert resolved.country_ko == "일본"
+
+
+def test_llm_resolve_returns_none_when_country_and_iata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_local(monkeypatch)
+    # country도 유효 iata도 없으면(둘 다 없음) None.
+    fake = {"country_ko": None, "iata": "XX", "skyscanner": None, "hub_note": None}
+    monkeypatch.setattr(geo_resolver, "run_codex_json", lambda *a, **k: fake)
+    assert geo_resolver.resolve_place("아무데도아닌곳") is None
+
+
+def test_llm_resolve_handles_non_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_local(monkeypatch)
+    # run_codex_json이 None(파싱 실패)이면 None.
+    monkeypatch.setattr(geo_resolver, "run_codex_json", lambda *a, **k: None)
+    assert geo_resolver.resolve_place("어딘가") is None

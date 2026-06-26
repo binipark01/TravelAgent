@@ -103,6 +103,23 @@ def codex_brief_available(command: str = "codex") -> bool:
     return any(shutil.which(candidate) for candidate in candidates)
 
 
+def live_llm_local_enabled(settings) -> bool:  # noqa: ANN001 - Settings(순환 import 회피)
+    """웹검색이 필요 없는 로컬 추론 LLM 호출의 게이트(공항코드·물가·한줄평 등).
+
+    enable_live_llm + codex 가용성만 본다. 웹검색 플래그는 일부러 보지 않는다 — 이 경로는
+    웹검색이 불필요하므로 'web_search 누락'이 아니라 '의도적으로 안 봄'임을 이름으로 드러낸다.
+    """
+    return settings.enable_live_llm and codex_brief_available(settings.codex_cli_command)
+
+
+def live_llm_web_enabled(settings) -> bool:  # noqa: ANN001 - Settings(순환 import 회피)
+    """웹검색을 쓰는 LLM 호출의 게이트(큐레이션·커뮤니티 코스·근교·이벤트 등).
+
+    로컬 게이트에 codex_oauth_enable_web_search까지 추가로 요구한다.
+    """
+    return live_llm_local_enabled(settings) and settings.codex_oauth_enable_web_search
+
+
 def resolve_codex_command(command: str = "codex") -> str:
     """codex 실행 파일 경로를 해석한다(Windows에선 .cmd/.exe 우선)."""
     command_path = Path(command)

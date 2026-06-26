@@ -13,9 +13,7 @@ class LocalEventsAgent:
 
     def run(self, state: TripPlanState) -> TripPlanState:
         brief = state.brief
-        destination = state.selected_destination or (
-            brief.destinations[0] if brief and brief.destinations else None
-        )
+        destination = state.primary_destination
         if not destination:
             return state
         start = brief.start_date if brief else None
