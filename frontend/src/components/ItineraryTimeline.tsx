@@ -81,6 +81,15 @@ export function ItineraryTimeline({
               ? '드래그로 순서 변경 · 시간 수정 · ✕로 삭제 — 변경은 자동 저장됩니다.'
               : itinerarySummaryLabel(itinerary.summary)}
           </p>
+          {!editing && (itinerary.feasibility_flags?.length ?? 0) > 0 && (
+            <div className="itinerary-warnings" role="alert">
+              {itinerary.feasibility_flags.map((flag) => (
+                <p className="itinerary-warning" key={flag}>
+                  ⚠ {flag.replace(/^\[검증\]\s*/, '')}
+                </p>
+              ))}
+            </div>
+          )}
           <div className="day-list">
             {(twoCol ? [0, 1] : [0]).map((col) => (
               <div className="day-col" key={col}>

@@ -1965,6 +1965,22 @@ legend {
 }
 
 /* 장소별 💡 메모를 일정 전체 아래에 박스 하나로 모은다(일차별로 묶어서) */
+.itinerary-warnings {
+  margin: 10px 0 2px;
+  padding: 10px 14px;
+  background: rgba(217, 169, 58, 0.1);
+  border: 1px solid rgba(217, 169, 58, 0.45);
+  border-radius: 10px;
+}
+.itinerary-warning {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #9a7411;
+}
+.itinerary-warning + .itinerary-warning {
+  margin-top: 4px;
+}
 .itinerary-memo {
   margin-top: 14px;
   padding: 14px 16px;
