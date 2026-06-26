@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 # 야경·전망(나이트뷰)이 아니면 그날 관광은 이 시각 안에 끝낸다(결정적 캡). 식사·숙소복귀·공항
 # 이동은 캡 이후에도 정상 배치한다 — 섬·근교 막배 전 복귀 흐름이 자연스럽게 만들어진다.
 _DAY_END_CAP = time(22, 0)
+# 귀가(숙소/공항 복귀) 도착 상한 — 관광 자체는 22시 전에 끝나도 먼 근교는 귀가 이동이 자정까지
+# 밀린다(사도·비에이 등). 그런 날은 뒤 곳수를 잘라 귀가가 이 시각을 넘지 않게 한다(critic도
+# 23시 이후 종료를 '너무 늦음'으로 본다).
+_HOME_RETURN_CAP = time(23, 0)
 # 야경/전망류 판정 키워드(title 또는 매칭 POI.type). 이런 곳은 22시를 넘겨도 허용.
 _NIGHT_VIEW_KEYWORDS = (
     "야경", "전망", "전망대", "전망실", "전망타워", "나이트", "night", "바", "bar",
@@ -293,8 +297,17 @@ class RouteAgent:
         # 식당으로 쓴 곳을 관광지로도 중복 배치하지 않는다(같은 카페가 점심+관광에 뜨는 버그).
         meal_titles = {t.strip().lower() for t in (arranged.lunch, arranged.dinner) if t}
         stops = [s for s in arranged.stops if s.title.strip().lower() not in meal_titles]
-        # 결정적 캡: 비-야경 관광이 22시를 넘기면 그 stop부터 일반 관광은 더 안 놓는다.
-        # 단 anchor(숙소 복귀·공항 이동)는 캡 이후에도 놓아 그날을 제대로 닫는다.
+        # 그날 '귀가 이동'(마지막 정류장→숙소/공항)의 분·수단. 관광이 22시 전에 끝나도 먼 근교는
+        # 귀가가 자정까지 밀리므로, 각 관광의 '귀가 도착 시각'을 투영해 캡 판정에 쓴다.
+        return_leg, return_mode = 0, ""
+        for idx in range(len(stops) - 1, 0, -1):
+            if self._is_anchor_stop(stops[idx], None):
+                return_leg = stops[idx - 1].travel_to_next_min
+                return_mode = stops[idx - 1].travel_mode
+                break
+        # 결정적 캡: 비-야경 관광이 22시를 넘기거나(종료 기준), 22시 전에 끝나도 귀가 도착이 23시를
+        # 넘기면(먼 근교) 그 stop부터 일반 관광은 더 안 놓는다. anchor(숙소 복귀·공항 이동)는 캡
+        # 이후에도 놓아 그날을 제대로 닫는다.
         sightseeing_capped = False
         for stop in stops:
             poi = self._lookup(attr_by_title, stop.title)
@@ -314,18 +327,30 @@ class RouteAgent:
                 continue
             # 이 stop으로의 이동을 가정해 종료 시각을 미리 계산한다(아직 추가 전).
             if last_title is not None:
-                minutes, mode = pending if pending else (meal_move, "도보")
+                if is_anchor and sightseeing_capped and return_leg:
+                    # 캡으로 뒤쪽 관광을 잘랐으면 숙소 복귀는 '진짜 귀가 이동(마지막 정류장→숙소)'
+                    # 시간으로 닫는다(중간 hop 이동을 귀가로 오용하지 않게).
+                    minutes, mode = return_leg, return_mode or "대중교통"
+                else:
+                    minutes, mode = pending if pending else (meal_move, "도보")
             else:
                 minutes, mode = 0, ""
             arrive = self._add_minutes(clock, minutes) if last_title is not None else clock
             end = self._add_minutes(arrive, stop.duration_min)
-            # 비-야경·비-anchor 관광이 22시를 넘기면: 캡을 걸고 이 stop은 버린다(이후 일반 관광도).
-            # _add_minutes는 자정을 넘기면 시각이 wrap(예: 25:00→01:00)하므로 wrap도 '초과'로 본다.
-            if not is_night and not is_anchor and self._past_day_cap(end):
+            # 캡: 비-야경·비-anchor 관광이 ① 22시를 넘겨 끝나거나 ② 22시 전에 끝나도 귀가 도착이
+            # 23시를 넘기면(먼 근교) 캡을 걸고 이 stop을 버린다(이후 일반 관광도). 단 그날 첫 관광은
+            # 귀가 기준으로는 안 자른다(최소 한 곳은 본다). _add_minutes는 자정을 넘기면 wrap(예:
+            # 25:00→01:00)하므로 wrap도 '초과'로 본다.
+            home_arrival = self._add_minutes(end, return_leg) if return_leg else end
+            if not is_night and not is_anchor and (
+                self._past_day_cap(end)
+                or (last_title is not None and return_leg and self._past_home_cap(home_arrival))
+            ):
                 sightseeing_capped = True
                 logger.info(
-                    "일정 캡: %s일차 '%s'(종료 %s)이 22시를 넘겨 제외(야경 아님)",
+                    "일정 캡: %s일차 '%s'(종료 %s·귀가도착 %s) 제외(야경 아님)",
                     day_number, stop.title, end.strftime("%H:%M"),
+                    home_arrival.strftime("%H:%M"),
                 )
                 continue  # pending은 보존 → 다음에 놓이는 stop(보통 anchor 복귀)이 이 이동을 쓴다
             # 실제 배치: 이동 추가 후 stop 추가.
@@ -355,6 +380,12 @@ class RouteAgent:
         시각(00:00~09:59)도 '초과'로 본다(_add_minutes가 25:00→01:00처럼 wrap하기 때문).
         """
         return end > _DAY_END_CAP or end < time(10, 0)
+
+    @staticmethod
+    def _past_home_cap(arrival: time) -> bool:
+        """귀가(숙소/공항 복귀) 도착이 너무 늦은지(23시 이후, 또는 자정 wrap). 관광 자체는 22시
+        전에 끝나도 먼 근교는 귀가가 자정까지 밀리므로, 이걸로 그런 날의 뒤 곳수를 잘라낸다."""
+        return arrival > _HOME_RETURN_CAP or arrival < time(10, 0)
 
     @staticmethod
     def _is_night_view(stop, poi: POIOption | None) -> bool:

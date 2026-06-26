@@ -47,14 +47,18 @@ class PlanCriticAgent:
 
         if state.optimized_itinerary:
             for day in state.optimized_itinerary.days:
-                if len(day.items) > 4:
+                # 과밀 판정은 실제 관광만 센다 — 매일 붙는 숙소 출발/복귀·공항 이동(anchor)은
+                # 빼야 한다(안 그러면 북엔드 2개 때문에 보통 날도 늘 과밀로 뜬다). 시내 4~5곳
+                # 기준이라 관광이 5곳을 넘으면(6+) 과밀.
+                sightseeing = [it for it in day.items if it.type not in ("공항", "숙소")]
+                if len(sightseeing) > 5:
                     findings.append(
                         CriticFinding(
                             severity=FindingSeverity.warning,
                             category=FindingCategory.route,
                             message=f"{day.day}일차 일정이 과밀합니다.",
-                            suggested_fix="하루 주요 POI를 4개 이하로 줄이세요.",
-                            affected_plan_items=[item.item_id for item in day.items],
+                            suggested_fix="하루 주요 POI를 5개 이하로 줄이세요.",
+                            affected_plan_items=[item.item_id for item in sightseeing],
                         )
                     )
                 if day.day == 1 and not any("버퍼" in note for note in day.notes):

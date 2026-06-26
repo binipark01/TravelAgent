@@ -460,3 +460,72 @@ def test_night_view_detection() -> None:
     assert agent._is_anchor_stop(ArrangedStop("간사이공항(출국)", 30, 0, "전철"), None)
     assert agent._is_anchor_stop(ArrangedStop("숙소 부근(난바역)", 30, 0, "도보"), None)
     assert not agent._is_anchor_stop(ArrangedStop("도톤보리", 60, 0, "도보"), None)
+
+
+# --- 귀가 도착 캡: 먼 근교(관광은 22시 전 끝나도 귀가 이동이 자정으로 밀리는) 날 뒤 곳수 잘림 ---
+
+
+def test_far_excursion_capped_by_home_return() -> None:
+    from datetime import time as time_cls
+
+    # 삿포로→후라노·비에이 실제 패턴 재현: 마지막 관광(흰수염폭포)은 21:30에 끝나(22시 전!)
+    # 종료-기준 캡엔 안 걸리지만, 귀가 이동 165분을 더하면 자정(00:15)을 넘긴다. 귀가-기준
+    # 캡이 이 stop을 잘라 그날을 23시 안에 닫아야 한다.
+    arranged = ArrangedDay(
+        day=3,
+        area="후라노·비에이",
+        note="근교 당일치기",
+        stops=[
+            ArrangedStop("팜 토미타", 120, 180, "버스"),  # 10:00~12:00, +180(삿포로→후라노)
+            ArrangedStop("시키사이노오카", 120, 90, "버스"),  # 15:00~17:00, +90
+            ArrangedStop("청의 호수", 60, 30, "버스"),  # 18:30~19:30, +30
+            ArrangedStop("흰수염폭포", 120, 165, "버스"),  # 20:00~22:00경, +165 귀가 → 캡
+            ArrangedStop("숙소 부근(삿포로역)", 30, 0, "버스"),  # anchor 복귀
+        ],
+        lunch=None,
+        dinner=None,
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(3, None, arranged, {}, {}, _state())
+    titles = [it.title for it in day.items]
+    # 귀가가 자정을 넘기게 하는 마지막 관광은 22시 전에 끝나도 잘린다.
+    assert "흰수염폭포" not in titles
+    # 그날이 제대로 닫힌다: 숙소 복귀가 저녁(14~23시 사이)에 도착한다(자정 wrap 아님).
+    home = next(it for it in day.items if "숙소" in it.title)
+    assert time_cls(14, 0) <= home.start_time <= time_cls(23, 0)
+    assert home.end_time <= time_cls(23, 0)
+    # 최소 한 곳(첫 관광)은 본다.
+    assert "팜 토미타" in titles
+
+
+def test_home_cap_keeps_late_city_night_when_return_is_short() -> None:
+    # 회귀 방지: 시내 날은 마지막 관광이 21:30에 끝나도 귀가가 짧으면(20분) 자르지 않는다
+    # (밤 늦은 시내 일정까지 과잉 삭제하면 안 됨 — 캡은 '자정 귀가'만 막는다).
+    arranged = ArrangedDay(
+        day=2,
+        area="시내",
+        note=None,
+        stops=[
+            ArrangedStop("A", 120, 30, "지하철"),  # 10:00~12:00
+            ArrangedStop("B", 180, 30, "지하철"),  # 12:30~15:30
+            ArrangedStop("C 야시장", 330, 20, "지하철"),  # 16:00~21:30, +20 귀가(짧음)
+            ArrangedStop("숙소 부근", 30, 0, "지하철"),  # anchor
+        ],
+        lunch=None,
+        dinner=None,
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(2, None, arranged, {}, {}, _state())
+    titles = [it.title for it in day.items]
+    # 귀가가 짧아 자정을 안 넘기므로 마지막 관광은 유지된다.
+    assert "C 야시장" in titles
+
+
+def test_past_home_cap_helper() -> None:
+    from datetime import time as time_cls
+
+    assert RouteAgent._past_home_cap(time_cls(23, 30)) is True  # 23시 이후
+    assert RouteAgent._past_home_cap(time_cls(0, 15)) is True  # 자정 넘겨 wrap(00:15)
+    assert RouteAgent._past_home_cap(time_cls(9, 0)) is True  # 10시 이전 = wrap
+    assert RouteAgent._past_home_cap(time_cls(22, 45)) is False  # 23시 직전 귀가 OK
+    assert RouteAgent._past_home_cap(time_cls(20, 0)) is False
