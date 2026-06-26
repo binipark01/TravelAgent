@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from travel_agent.app.db.base import Base
+from travel_agent.app.db.types import UtcDateTime
 from travel_agent.app.utils.time import utc_now
 
 
@@ -14,7 +15,7 @@ class UserModel(Base):
     __tablename__ = "users"
 
     user_id: Mapped[str] = mapped_column(String(80), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
 
     preferences: Mapped[UserPreferenceModel | None] = relationship(back_populates="user")
 
@@ -25,9 +26,9 @@ class UserPreferenceModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), unique=True)
     preferences_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+        UtcDateTime, default=utc_now, onupdate=utc_now
     )
 
     user: Mapped[UserModel] = relationship(back_populates="preferences")
@@ -40,9 +41,9 @@ class TripModel(Base):
     user_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(40), index=True)
     current_snapshot_version: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+        UtcDateTime, default=utc_now, onupdate=utc_now
     )
 
     snapshots: Mapped[list[TripStateSnapshotModel]] = relationship(back_populates="trip")
@@ -56,7 +57,7 @@ class TripStateSnapshotModel(Base):
     run_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer)
     state_json: Mapped[dict[str, Any]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
 
     trip: Mapped[TripModel] = relationship(back_populates="snapshots")
 
@@ -72,9 +73,9 @@ class AgentRunModel(Base):
     current_step: Mapped[str | None] = mapped_column(String(120), nullable=True)
     input_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     output_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -90,8 +91,8 @@ class AgentStepModel(Base):
     input_summary: Mapped[str] = mapped_column(Text)
     output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_calls_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -107,8 +108,8 @@ class ToolCallModel(Base):
     status: Mapped[str] = mapped_column(String(40), index=True)
     input_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -123,7 +124,7 @@ class AgentEventModel(Base):
     type: Mapped[str] = mapped_column(String(80), index=True)
     message: Mapped[str] = mapped_column(Text)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
 
 
 class SourceRefModel(Base):
@@ -137,8 +138,8 @@ class SourceRefModel(Base):
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     title: Mapped[str] = mapped_column(String(240))
     reference: Mapped[str] = mapped_column(String(240))
-    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     is_live: Mapped[int] = mapped_column(Integer, default=0)
     is_mock: Mapped[int] = mapped_column(Integer, default=1)
     source_type: Mapped[str] = mapped_column(String(80), default="mock")
@@ -159,8 +160,8 @@ class EvidencePacketModel(Base):
     source_refs_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     collected_by_agent: Mapped[str] = mapped_column(String(120), index=True)
     collected_by_tool: Mapped[str] = mapped_column(String(160), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     freshness_policy: Mapped[str] = mapped_column(String(120))
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
 
@@ -175,11 +176,11 @@ class ApprovalRequestModel(Base):
     exact_payload_hash: Mapped[str] = mapped_column(String(128))
     price_ceiling_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     price_ceiling_currency: Mapped[str | None] = mapped_column(String(12), nullable=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
     status: Mapped[str] = mapped_column(String(40), index=True)
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    approved_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
 
 
 class BookingRecordModel(Base):
@@ -195,4 +196,4 @@ class BookingRecordModel(Base):
     price_amount: Mapped[float] = mapped_column(Float)
     price_currency: Mapped[str] = mapped_column(String(12))
     notes_json: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)

@@ -50,8 +50,8 @@ logger = logging.getLogger(__name__)
 def _latency_ms(step: AgentStep) -> int | None:
     """단계 소요시간(ms). started_at·completed_at이 있을 때만. (관측 로그 전용, shape 불변).
 
-    관측용이라 절대 예외를 던지면 안 된다 — naive/aware 혼재 등 어떤 이유로든 빼기에
-    실패하면 None을 돌려준다(동작·shape에 영향 없음).
+    이제 모든 DB datetime이 UtcDateTime으로 aware-UTC 통일돼 naive/aware 혼재는 없지만,
+    관측용이라 어떤 이유로도 예외를 던지면 안 되므로 방어 가드는 유지한다(실패 시 None).
     """
     if step.started_at is None or step.completed_at is None:
         return None
