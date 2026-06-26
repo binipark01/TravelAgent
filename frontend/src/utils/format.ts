@@ -154,3 +154,27 @@ export function transportModeLabel(mode: string): string {
   }
   return labels[mode] ?? cleanDisplayText(mode)
 }
+
+/** 이동수단 텍스트(영문 키 또는 LLM이 쓴 한글 자유표현)에 맞는 아이콘.
+ * 명시적 '도보'만 🚶로, 나머지(이름 붙은 교통수단·미지정)는 적절한 교통 아이콘으로.
+ * 예전엔 무조건 🚶라서 '난카이 라피트(기차)'에도 도보 아이콘이 붙는 문제가 있었다. */
+export function transportModeIcon(mode: string): string {
+  const m = (mode || '').toLowerCase()
+  const has = (...ks: string[]) => ks.some((k) => m.includes(k))
+  // 교통수단을 먼저 본다(도보는 맨 마지막) — '전철+버스/도보'처럼 도보가 섞여도 주 수단을 표시.
+  if (has('비행', '항공', 'flight', '✈')) return '✈️'
+  if (has('페리', '유람선', '선착', '배편', 'ferry', 'boat')) return '⛴️'
+  if (has('신칸센', '고속철', '고속열차', 'shinkansen', 'ktx')) return '🚄'
+  if (has('택시', 'taxi', '렌터카', '차량', '자가용', 'car', 'uber', 'grab')) return '🚕'
+  if (has('지하철', '전철', '메트로', 'subway', 'metro')) return '🚇'
+  if (
+    has(
+      '기차', '열차', '특급', '급행', '라피트', '철도', '공항철도', 'jr', 'train',
+      'express', '난카이', '한큐', '한신', '케이한', '긴테쓰', '라인', 'line',
+    )
+  )
+    return '🚆'
+  if (has('버스', 'bus', '리무진', '셔틀', 'shuttle')) return '🚌'
+  if (has('도보', '걷', 'walk', 'foot')) return '🚶'
+  return '🚇' // 미지정 이동: 도보보다 대중교통이 평균적으로 맞다(명시 도보는 위에서 처리)
+}

@@ -25,6 +25,7 @@ import {
   cleanDisplayText,
   formatDate,
   formatMoney,
+  transportModeIcon,
   transportModeLabel,
 } from '../utils/format'
 import { placeTriggerProps, useMapFocus } from './MapFocusContext'
@@ -112,7 +113,7 @@ function reassignTimes(entries: DayEntry[]): DayEntry[] {
 
 function entryTitle(entry: DayEntry): string {
   if (entry.kind === 'transfer') {
-    return `🚶 ${transportModeLabel(entry.data.mode)} ${entry.data.travel_minutes}분`
+    return `${transportModeIcon(entry.data.mode)} ${transportModeLabel(entry.data.mode)} ${entry.data.travel_minutes}분`
   }
   return cleanDisplayText(entry.data.title)
 }
@@ -275,7 +276,8 @@ export function DayPlanCard({
                   </time>
                   <div>
                     <strong className="transfer-label">
-                      🚶 {transportModeLabel(transfer.mode)} {transfer.travel_minutes}분
+                      {transportModeIcon(transfer.mode)} {transportModeLabel(transfer.mode)}{' '}
+                      {transfer.travel_minutes}분
                     </strong>
                   </div>
                 </div>
