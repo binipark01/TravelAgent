@@ -198,6 +198,59 @@ def test_curate_nearby_builds_guide(monkeypatch: pytest.MonkeyPatch) -> None:
     assert guide.metadata.source_ref.provider == "llm_curation"
 
 
+_FAKE_LOCALTRANS = {
+    "city": "런던",
+    "summary": "히드로 익스프레스·지하철과 오이스터 카드 안내",
+    "airport_transfers": [
+        {
+            "name": "히드로 익스프레스",
+            "detail": "패딩턴역까지 직통",
+            "price": "약 25파운드",
+            "duration": "약 15분",
+            "frequency": "15분 간격",
+            "hours": "05:00~24:00",
+            "sources": ["https://www.heathrowexpress.com/"],
+        },
+        {"name": "피카딜리 라인", "detail": "지하철로 시내 직결", "price": "약 5.5파운드"},
+    ],
+    "transit_passes": [
+        {"name": "오이스터 카드", "detail": "지하철·버스 충전식", "price": "보증금 7파운드"},
+    ],
+    "tips": ["컨택리스 카드로도 오이스터 요금이 적용된다"],
+}
+
+
+def test_curate_local_transport_disabled_returns_none() -> None:
+    # conftest autouse 픽스처가 ENABLE_LIVE_LLM=false → 비활성 → None(정적 데이터로 폴백 안 됨).
+    assert curator.curate_local_transport("런던", "영국") is None
+
+
+def test_curate_local_transport_builds_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: _FAKE_LOCALTRANS)
+
+    plan = curator.curate_local_transport("런던", "영국")
+    assert plan is not None
+    assert plan.city == "런던"
+    assert len(plan.airport_transfers) == 2
+    first = plan.airport_transfers[0]
+    assert first.category == "airport"
+    assert first.name == "히드로 익스프레스"
+    assert first.frequency == "15분 간격"
+    assert first.hours == "05:00~24:00"
+    assert first.source_url == "https://www.heathrowexpress.com/"
+    assert len(plan.transit_passes) == 1
+    assert plan.transit_passes[0].category == "pass"
+    assert plan.tips
+    assert plan.metadata.source_ref.provider == "llm_curation"
+
+
+def test_curate_local_transport_none_when_no_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: {"city": "X", "summary": "y"})
+    assert curator.curate_local_transport("엑스시티") is None
+
+
 _FAKE_MULTI = {
     "summary": "파리 3박 후 유로스타로 런던 2박",
     "segments": [

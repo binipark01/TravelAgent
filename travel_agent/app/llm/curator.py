@@ -27,6 +27,8 @@ from travel_agent.app.schemas.providers import (
     IntercityLeg,
     LocalEvent,
     LocalEventsGuide,
+    LocalTransportItem,
+    LocalTransportPlan,
     MultiCityPlan,
     NearbyDestination,
     NearbyGuide,
@@ -65,6 +67,7 @@ _CHECK_CACHE: dict[str, PrepChecklist] = {}
 _MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
 _EVENTS_CACHE: dict[str, LocalEventsGuide] = {}
 _COMPANION_CACHE: dict[str, list[CompanionCity]] = {}
+_LOCALTRANS_CACHE: dict[str, LocalTransportPlan] = {}
 
 # route_optimizer._prefetch_route_lookups가 근교·숙박구역·동반도시 큐레이션을 병렬로 돌려
 # 이 모듈의 캐시에 동시에 접근한다. 락으로 check-then-set의 dict race를 닫는다.
@@ -100,6 +103,7 @@ def clear_cache() -> None:
         _MULTICITY_CACHE.clear()
         _EVENTS_CACHE.clear()
         _COMPANION_CACHE.clear()
+        _LOCALTRANS_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -383,6 +387,96 @@ def curate_nearby(destination: str) -> NearbyGuide | None:
         )
 
     return _cached(_NEARBY_CACHE, cache_key, compute)
+
+
+def _transport_items(raw_list: object, category: str) -> list[LocalTransportItem]:
+    """LLM이 준 교통 항목 배열을 LocalTransportItem 리스트로 변환(이름 없으면 건너뜀)."""
+    items: list[LocalTransportItem] = []
+    if not isinstance(raw_list, list):
+        return items
+    for raw in raw_list:
+        if not isinstance(raw, dict):
+            continue
+        name = _clean_str(raw.get("name"))
+        if not name:
+            continue
+        sources = _clean_list(raw.get("sources"))
+        items.append(
+            LocalTransportItem(
+                category=category,
+                name=name,
+                detail=_clean_str(raw.get("detail")) or "",
+                price=_clean_str(raw.get("price")),
+                duration=_clean_str(raw.get("duration")),
+                frequency=_clean_str(raw.get("frequency")),
+                hours=_clean_str(raw.get("hours")),
+                source_url=sources[0] if sources else None,
+            )
+        )
+    return items
+
+
+def curate_local_transport(
+    destination: str, country: str | None = None
+) -> LocalTransportPlan | None:
+    """공항↔시내 교통 + 교통패스를 웹검색으로 종합한다(정적 데이터 없는 도시 폴백).
+
+    특정 출발 시각은 만들지 말고(요금·간격·운영시간 같은 일반 정보만), 근거 URL을 붙인다.
+    비활성/실패/항목 없음이면 None.
+    """
+    settings = get_settings()
+    if not _enabled(settings):
+        return None
+    cache_key = destination.strip().lower()
+    where = f"{destination}({country})" if country else destination
+
+    prompt = (
+        "너는 한국인 여행자를 위한 현지 교통 큐레이터다. live web search로 공식 교통공사·공항·"
+        "관광청과 한국어 여행 블로그를 검색해 "
+        f"'{where}'의 **공항↔시내 이동수단**과 **교통패스/교통카드**를 종합하라.\n"
+        f"{source_hints_block(destination)}\n"
+        "공항 이동은 각 수단의 대략 요금·소요시간·배차간격(frequency)·운영시간(hours)을 적되, "
+        "특정 출발 시각은 지어내지 마라(일반 정보만). 교통패스는 카드명·대략 요금·혜택을 적어라. "
+        "각 항목에 근거 URL을 최소 1개. 실제 존재하는 것만, 지어내지 마라.\n\n"
+        "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"
+        "{\n"
+        f'  "city": "{destination}",\n'
+        '  "summary": "현지 교통 한두 문장 요약",\n'
+        '  "airport_transfers": [{"name":"히드로 익스프레스","detail":"패딩턴역까지 직통",'
+        '"price":"약 25파운드","duration":"약 15분","frequency":"15분 간격",'
+        '"hours":"05:00~24:00","sources":["url"]}],\n'
+        '  "transit_passes": [{"name":"오이스터 카드","detail":"지하철·버스 충전식",'
+        '"price":"보증금 7파운드","sources":["url"]}],\n'
+        '  "tips": ["현지 교통 팁 1~3개"]\n'
+        "}\n"
+        "공항 이동 2~4개, 교통패스 1~3개."
+    )
+
+    def compute() -> LocalTransportPlan | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        transfers = _transport_items(data.get("airport_transfers"), "airport")
+        passes = _transport_items(data.get("transit_passes"), "pass")
+        if not transfers and not passes:
+            return None
+        city = _clean_str(data.get("city")) or destination
+        summary = _clean_str(data.get("summary")) or f"{city} 현지 교통 안내"
+        src = next(
+            (i.source_url for i in [*transfers, *passes] if i.source_url),
+            _maps_url(city, destination),
+        )
+        return LocalTransportPlan(
+            city=city,
+            summary=summary,
+            airport_transfers=transfers,
+            transit_passes=passes,
+            tips=_clean_list(data.get("tips")),
+            source_url=src,
+            metadata=_llm_metadata(src),
+        )
+
+    return _cached(_LOCALTRANS_CACHE, cache_key, compute)
 
 
 def curate_stay_areas(destination: str) -> StayAreaGuide | None:

@@ -16,6 +16,21 @@ def test_destination_currency_maps_country() -> None:
     assert destination_currency("Nowhere") is None
 
 
+def test_destination_currency_non_euro_europe() -> None:
+    # 셰겐이라도 유로가 아닌 유럽: '유럽(셰겐)'→EUR로 묶이면 틀린다. 도시·국가명으로 먼저 잡는다.
+    assert destination_currency("취리히") == "CHF"
+    assert destination_currency("Zurich") == "CHF"
+    assert destination_currency("스위스") == "CHF"
+    assert destination_currency("프라하") == "CZK"
+    assert destination_currency("Prague") == "CZK"
+    assert destination_currency("부다페스트") == "HUF"
+    assert destination_currency("스톡홀름") == "SEK"
+    assert destination_currency("오슬로") == "NOK"
+    assert destination_currency("코펜하겐") == "DKK"
+    # 영국은 셰겐이 아니지만 통화는 GBP(기존 매핑 유지).
+    assert destination_currency("런던") == "GBP"
+
+
 def test_fetch_fx_info_converts_budget(monkeypatch) -> None:
     # 1 KRW = 0.1 JPY (즉 1 JPY = 10 KRW) 라고 가정
     monkeypatch.setattr(exchange_rate, "_fetch_rate", lambda base, target: 0.1)

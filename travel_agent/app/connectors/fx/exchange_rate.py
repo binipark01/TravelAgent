@@ -26,7 +26,28 @@ _COUNTRY_CCY: dict[str, str] = {
     "홍콩": "HKD", "필리핀": "PHP", "말레이시아": "MYR", "인도네시아": "IDR",
     "미국": "USD", "괌": "USD", "사이판": "USD", "유럽(셰겐)": "EUR", "영국": "GBP",
     "중국": "CNY", "호주": "AUD", "캐나다": "CAD",
+    # 유로존 개별국 — resolve_country가 '유럽(셰겐)'으로 안 묶고 개별국으로 풀 때 환율이
+    # None이 되지 않게(비엔나·리스본 '환율없음' 버그). 영문 별칭도 함께.
+    "프랑스": "EUR", "France": "EUR", "독일": "EUR", "Germany": "EUR",
+    "이탈리아": "EUR", "Italy": "EUR", "스페인": "EUR", "Spain": "EUR",
+    "네덜란드": "EUR", "Netherlands": "EUR", "오스트리아": "EUR", "Austria": "EUR",
+    "포르투갈": "EUR", "Portugal": "EUR", "그리스": "EUR", "벨기에": "EUR",
+    "아일랜드": "EUR", "핀란드": "EUR",
+    # 셰겐이지만 유로가 아닌 나라 — '유럽(셰겐)'→EUR로 묶이면 틀린다(취리히 CHF, 프라하 CZK).
+    "스위스": "CHF", "Switzerland": "CHF", "체코": "CZK", "Czech": "CZK", "Czechia": "CZK",
 }
+
+# 셰겐이라도 유로가 아닌 유럽 도시/국가 — resolve_country가 '유럽(셰겐)'으로 묶기 전에 도시·
+# 국가명으로 먼저 통화를 잡는다(아래 키워드가 destination에 있으면 그 통화 강제).
+_NON_EURO_EUROPE: list[tuple[tuple[str, ...], str]] = [
+    (("스위스", "switzerland", "취리히", "zurich", "zürich", "제네바", "geneva", "바젤"), "CHF"),
+    (("체코", "czech", "프라하", "prague", "praha"), "CZK"),
+    (("헝가리", "hungary", "부다페스트", "budapest"), "HUF"),
+    (("폴란드", "poland", "바르샤바", "warsaw", "크라쿠프", "krakow"), "PLN"),
+    (("스웨덴", "sweden", "스톡홀름", "stockholm"), "SEK"),
+    (("노르웨이", "norway", "오슬로", "oslo"), "NOK"),
+    (("덴마크", "denmark", "코펜하겐", "copenhagen"), "DKK"),
+]
 
 # 통화별 표기 이름과 샘플 단위(현지통화 기준)
 _CURRENCY_META: dict[str, dict] = {
@@ -45,6 +66,13 @@ _CURRENCY_META: dict[str, dict] = {
     "CNY": {"name": "위안", "samples": [100, 1000]},
     "AUD": {"name": "호주달러", "samples": [10, 100]},
     "CAD": {"name": "캐나다달러", "samples": [10, 100]},
+    "CHF": {"name": "스위스프랑", "samples": [10, 100]},
+    "CZK": {"name": "코루나", "samples": [100, 1000]},
+    "HUF": {"name": "포린트", "samples": [1000, 10000]},
+    "PLN": {"name": "즈워티", "samples": [10, 100]},
+    "SEK": {"name": "스웨덴크로나", "samples": [100, 1000]},
+    "NOK": {"name": "노르웨이크로네", "samples": [100, 1000]},
+    "DKK": {"name": "덴마크크로네", "samples": [100, 1000]},
 }
 
 _TIPS_COMMON = [
@@ -61,6 +89,12 @@ _TIPS_BY_CCY: dict[str, list[str]] = {
 
 
 def destination_currency(destination: str) -> str | None:
+    # 비유로존 유럽(셰겐이라도 통화가 다름)은 도시·국가명으로 먼저 잡는다 — resolve_country가
+    # '유럽(셰겐)'으로 묶으면 EUR로 잘못 가기 때문(취리히 CHF, 프라하 CZK 등).
+    low = (destination or "").lower()
+    for keys, ccy in _NON_EURO_EUROPE:
+        if any(k in low for k in keys):
+            return ccy
     country = resolve_country(destination)
     if country is None:
         return None
