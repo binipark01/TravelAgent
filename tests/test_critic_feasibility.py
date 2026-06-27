@@ -75,6 +75,27 @@ def test_far_excursion_daytrip_is_flagged() -> None:
     assert any("3일차" in f and "당일치기" in f for f in itin.feasibility_flags)
 
 
+def test_overnight_move_day_not_flagged_as_daytrip() -> None:
+    # 다른 숙소로 자러 가는 1박 이동일(비슈케크→송쿨 유르트캠프)은 왕복 당일치기가 아니므로
+    # 이동이 길어도(편도 3h+) '당일치기 빠듯' 플래그를 띄우지 않는다.
+    day = DayPlan(
+        day=3,
+        items=[
+            _item("숙소 부근(비슈케크 알라토광장 일대)", time(10, 0), time(10, 30), type_="숙소"),
+            _item("부라나 탑", time(12, 0), time(13, 30)),
+            _item("코치코르 마을", time(16, 0), time(17, 0)),
+            _item("숙소 부근(송쿨 유르트캠프 일대)", time(20, 0), time(20, 30), type_="숙소"),
+        ],
+        transfers=[
+            _transfer(150, time(10, 30), time(13, 0)),
+            _transfer(180, time(17, 0), time(20, 0)),
+        ],
+    )
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("당일치기" in f for f in itin.feasibility_flags)
+
+
 def test_close_excursion_not_flagged_as_daytrip() -> None:
     # 편도 50분 근교 왕복(오타루류) = 이동 적음 → 당일치기 무난, 플래그 없음.
     day = DayPlan(

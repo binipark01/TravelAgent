@@ -199,6 +199,11 @@ class PlanCriticAgent:
         max_leg = max(legs)
         if max_leg < _EXCURSION_LEG_MIN:
             return []  # 시외 근교가 아님 — 판단 대상 아님(시내 이동만 있는 날)
+        # 오버랜드 1박 이동일(다른 숙소로 자러 가는 날, 예: 송쿨 유르트캠프)은 '당일치기'가 아니라
+        # 의도된 1박이라 판단 대상이 아니다 — 그날 첫 숙소와 마지막 숙소가 다르면 왕복이 아님.
+        homes = [it for it in day.items if (it.type or "") == "숙소" or "숙소" in (it.title or "")]
+        if len(homes) >= 2 and homes[0].title.strip() != homes[-1].title.strip():
+            return []
         transit_total = sum(legs)
         if transit_total < _DAYTRIP_TIGHT_TRANSIT:
             return []  # 시외 근교지만 왕복이 길지 않아 당일치기 무난
