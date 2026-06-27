@@ -99,6 +99,17 @@ export function PlanCards({
   const cleanRegion = (r?: string | null) =>
     (r || '').replace(/근교\s*:/g, '').replace(/·/g, ' ').trim()
 
+  // 멀티지역 날(area가 '비슈케크·부라나·코치코르·송쿨'처럼 여러 구역을 ·로 이은 오버랜드 날)은
+  // 그 연결문자열을 anchor로 쓰면 Google이 첫 토큰(비슈케크)만 잡아 모든 stop이 한 점으로
+  // 붕괴한다(부라나·코치코르·송쿨이 전부 비슈케크로 찍힘). 이런 날은 국가(없으면 hub)를 단일
+  // anchor로 써야 각 장소가 제 위치에 찍힌다 — 거리가 먼 거점 POI라 국가만으로도 정확히 잡힌다.
+  const country = (tickets?.destination_country || '').trim()
+  const isMultiRegion = (raw?: string | null) =>
+    (raw || '').split('·').filter((s) => s.trim()).length > 1
+  // 근교 날 anchor: 멀티지역이면 국가(폴백 hub), 단일 구역이면 그 구역.
+  const excursionAnchor = (raw?: string | null) =>
+    isMultiRegion(raw) ? country || hub : cleanRegion(raw)
+
   // 한 장소의 지오코딩 전략. 좌표 있으면 그대로. 없으면 이름 지오코딩인데, 두 경우로 갈린다:
   //  · 같은-도시 날(region이 hub를 포함하거나 region 없음): hub로 anchor + hub 좌표로 bias.
   //    '古町商店街'처럼 흔한 이름은 접미사('…, 니가타')만으론 안 눌려 다른 현(후쿠오카)으로
@@ -114,7 +125,7 @@ export function PlanCards({
     const region = cleanRegion(place.region)
     const hubKey = (hub || '').split(/[\s·,]/)[0]
     const sameCity = !region || (!!hubKey && region.includes(hubKey))
-    const anchor = sameCity ? hub : region
+    const anchor = sameCity ? hub : excursionAnchor(place.region)
     return {
       query: [place.label, anchor || hub].filter(Boolean).join(', '),
       biasLat: sameCity ? (tickets?.hub_lat ?? null) : null,
@@ -141,10 +152,13 @@ export function PlanCards({
     // 그날 지역(린쿠타운·간사이공항, 교토 등)으로 anchor. 도시 전체(hub)로 잡으면 '고디바 카페'
     // 같은 이름이 시내 다른 지점으로 찍혀 동선이 크게 우회한다. 좌표 있으면 좌표 우선.
     const region = cleanRegion(route.region)
+    // 멀티지역 날은 연결문자열 대신 국가(폴백 hub)로 anchor — 안 그러면 모든 stop이 첫 구역으로
+    // 붕괴해 동선이 한 점이 된다(부라나·코치코르·송쿨이 전부 비슈케크로). 단일 구역 날은 그대로.
+    const routeAnchor = excursionAnchor(route.region) || hub
     const routeQuery = (place: MapPlacePick) =>
       place.lat != null && place.lng != null
         ? `${place.lat},${place.lng}`
-        : [place.label, region || hub].filter(Boolean).join(', ')
+        : [place.label, routeAnchor].filter(Boolean).join(', ')
     const queries = stops.map(routeQuery)
     // 동선은 '숙소(본거지)에서 출발'하는 흐름으로 보여준다. 그날 첫 장소가 본거지 권역이
     // 아니면(베르사유 같은 근교·먼 구역 가는 날) 본거지를 출발점으로 앞에 붙여, 숙소→목적지
