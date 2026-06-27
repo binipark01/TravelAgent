@@ -56,3 +56,36 @@ def test_fetch_fx_info_returns_none_on_api_failure(monkeypatch) -> None:
 
 def test_fetch_fx_info_none_for_unknown_destination() -> None:
     assert fetch_fx_info("Nowhere", "KRW", 500_000) is None
+
+
+def test_destination_currency_llm_fallback_for_exotic(monkeypatch) -> None:
+    # 정적 맵에 없는 통화(키르기스 KGS 등)는 LLM 리졸버의 ISO 코드로 폴백한다.
+    from travel_agent.app.llm.geo_resolver import ResolvedPlace
+
+    monkeypatch.setattr(
+        "travel_agent.app.llm.geo_resolver.resolve_place",
+        lambda name: ResolvedPlace(
+            country_ko="키르기스스탄", iata="FRU", skyscanner="fru", hub_note=None,
+            city_en="Bishkek", lat=42.87, lng=74.59, currency="KGS",
+        ),
+    )
+    assert destination_currency("비슈케크") == "KGS"
+
+
+def test_fetch_fx_info_builds_card_for_exotic_currency(monkeypatch) -> None:
+    # 통화 메타가 없는 코드도 generic 메타(코드명·기본 샘플)로 카드를 만든다.
+    from travel_agent.app.llm.geo_resolver import ResolvedPlace
+
+    monkeypatch.setattr(
+        "travel_agent.app.llm.geo_resolver.resolve_place",
+        lambda name: ResolvedPlace(
+            country_ko="키르기스스탄", iata="FRU", skyscanner="fru", hub_note=None,
+            city_en="Bishkek", lat=42.87, lng=74.59, currency="KGS",
+        ),
+    )
+    monkeypatch.setattr(exchange_rate, "_fetch_rate", lambda base, target: 0.0568)
+    info = fetch_fx_info("비슈케크", "KRW", 2_000_000)
+    assert info is not None
+    assert info.target_currency == "KGS"
+    assert info.samples  # generic 메타로 샘플 생성됨
+    assert "KGS" in (info.budget_total_target_label or "")

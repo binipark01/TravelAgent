@@ -28,6 +28,7 @@ def test_llm_resolve_parses_city_en_and_coords(monkeypatch: pytest.MonkeyPatch) 
         lambda *a, **k: {
             "country_ko": "네덜란드", "iata": "AMS", "skyscanner": "ams",
             "hub_note": None, "city_en": "Amsterdam", "lat": 52.3676, "lng": 4.9041,
+            "currency": "eur",
         },
     )
     r = geo_resolver._llm_resolve("암스테르담")
@@ -35,6 +36,7 @@ def test_llm_resolve_parses_city_en_and_coords(monkeypatch: pytest.MonkeyPatch) 
     assert r.city_en == "Amsterdam"
     assert r.lat == 52.3676
     assert r.lng == 4.9041
+    assert r.currency == "EUR"  # 대문자로 정규화
 
 
 def test_coerce_coord_rejects_bad_values() -> None:
@@ -44,6 +46,15 @@ def test_coerce_coord_rejects_bad_values() -> None:
     assert geo_resolver._coerce_coord("x") is None
     assert geo_resolver._coerce_coord(0.0) is None  # 0,0(널섬)은 무시
     assert geo_resolver._coerce_coord(999) is None  # 범위 밖
+
+
+def test_clean_currency_validates_iso() -> None:
+    assert geo_resolver._clean_currency("kgs") == "KGS"
+    assert geo_resolver._clean_currency("JPY") == "JPY"
+    assert geo_resolver._clean_currency("won") == "WON"  # 3레터면 통과(상위에서 신뢰)
+    assert geo_resolver._clean_currency("US$") is None  # 비알파
+    assert geo_resolver._clean_currency("EU") is None  # 길이
+    assert geo_resolver._clean_currency(None) is None
 
 
 def test_resolve_place_caches_single_llm_call(monkeypatch: pytest.MonkeyPatch) -> None:

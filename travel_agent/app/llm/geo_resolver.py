@@ -29,6 +29,8 @@ class ResolvedPlace:
     city_en: str | None = None
     lat: float | None = None
     lng: float | None = None
+    # 정적 통화 맵에 없는 나라(키르기스 KGS 등) 폴백용 ISO 4217 통화코드.
+    currency: str | None = None
 
 
 _PROMPT = (
@@ -45,7 +47,9 @@ _PROMPT = (
     '  "city_en": "그 도시의 표준 영어 표기(예: Amsterdam, Vienna, Zurich). 국가만 주어졌으면 '
     'null",\n'
     '  "lat": 도심 위도(숫자, 소수점 4자리 정도. 모르면 null),\n'
-    '  "lng": 도심 경도(숫자, 모르면 null)\n'
+    '  "lng": 도심 경도(숫자, 모르면 null),\n'
+    '  "currency": "그 나라 법정통화의 ISO 4217 3레터 코드(예: JPY, EUR, KGS, KZT). 모르면 '
+    'null"\n'
     "}\n"
     "지명을 전혀 모르면 모든 값을 null로. iata는 실제 존재하는 공항 코드만 적는다.\n"
     "장소: "
@@ -63,6 +67,14 @@ def _normalize(name: str) -> str:
 
 def _clean_str(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _clean_currency(value: object) -> str | None:
+    """ISO 4217 통화코드(영문 3레터)만 통과. 아니면 None."""
+    if not isinstance(value, str):
+        return None
+    code = value.strip().upper()
+    return code if len(code) == 3 and code.isalpha() else None
 
 
 def _coerce_coord(value: object) -> float | None:
@@ -113,6 +125,7 @@ def _llm_resolve(name: str) -> ResolvedPlace | None:
         city_en=_clean_str(data.get("city_en")),
         lat=_coerce_coord(data.get("lat")),
         lng=_coerce_coord(data.get("lng")),
+        currency=_clean_currency(data.get("currency")),
     )
 
 

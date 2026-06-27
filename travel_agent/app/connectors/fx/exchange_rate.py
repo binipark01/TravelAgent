@@ -96,9 +96,19 @@ def destination_currency(destination: str) -> str | None:
         if any(k in low for k in keys):
             return ccy
     country = resolve_country(destination)
-    if country is None:
-        return None
-    return _COUNTRY_CCY.get(country)
+    if country is not None:
+        ccy = _COUNTRY_CCY.get(country)
+        if ccy:
+            return ccy
+    # 정적 맵에 없는 통화(키르기스 KGS·카자흐 KZT·조지아 GEL 등 롱테일)는 LLM 리졸버의 ISO
+    # 통화코드로 폴백한다(지연 import로 import 순환 회피, resolve_place는 캐시됨).
+    try:
+        from travel_agent.app.llm.geo_resolver import resolve_place
+
+        resolved = resolve_place(destination)
+    except Exception:  # noqa: BLE001 - 폴백이라 어떤 실패든 통화 없음으로 처리
+        resolved = None
+    return resolved.currency if resolved else None
 
 
 def _fetch_rate(base: str, target: str) -> float | None:
