@@ -26,6 +26,12 @@ _MARKET_LATE_START = time(15, 0)
 _MUSEUM_KEYWORDS = ("박물관", "미술관", "전시관", "전시", "갤러리", "기념관")
 _MUSEUM_LATE_END = time(17, 30)
 
+# 근교 당일치기 판단: 한 구간(transfer)이 이 시간 이상이면 '시외 근교'로 본다(시내 이동은
+# 보통 그 미만). 시외 근교 날에 그날 총 이동이 아래 시간을 넘으면 당일치기로 빠듯하다고 판단해
+# '1박 고려'를 권한다(왕복 이동이 활동시간을 잡아먹는 경우 — 사도·후라노/비에이 등).
+_EXCURSION_LEG_MIN = 90
+_DAYTRIP_TIGHT_TRANSIT = 300
+
 
 class PlanCriticAgent:
     def run(self, state: TripPlanState) -> TripPlanState:
@@ -176,7 +182,31 @@ class PlanCriticAgent:
             )
         # 4) 영업시간(업종 상식): type만으로 명백한 시간대 위반을 잡는다(특정 시간 날조 없음).
         flags.extend(self._business_hours_flags(day))
+        # 5) 근교 당일치기 가능성: 먼 근교(편도 90분+)인데 왕복 이동이 과하면 빠듯하다고 판단.
+        flags.extend(self._daytrip_feasibility_flags(day))
         return flags
+
+    def _daytrip_feasibility_flags(self, day) -> list[str]:  # noqa: ANN001 - DayPlan
+        """먼 근교(편도 90분+)를 그날 안에 다녀오는데 총 이동이 과하면 당일치기 무리라고 판단한다.
+
+        시내 날(짧은 이동만)은 대상이 아니다(max_leg<90이면 통과). transfer.travel_minutes만
+        써서 외부 fetch 없이 결정적으로 동작한다 — 귀가캡이 시각을 끊어도, '애초에 당일치기로
+        무리'인 날은 따로 알려 1박을 고려하게 한다.
+        """
+        legs = [xfer.travel_minutes or 0 for xfer in day.transfers]
+        if not legs:
+            return []
+        max_leg = max(legs)
+        if max_leg < _EXCURSION_LEG_MIN:
+            return []  # 시외 근교가 아님 — 판단 대상 아님(시내 이동만 있는 날)
+        transit_total = sum(legs)
+        if transit_total < _DAYTRIP_TIGHT_TRANSIT:
+            return []  # 시외 근교지만 왕복이 길지 않아 당일치기 무난
+        hours = round(transit_total / 60, 1)
+        return [
+            f"[검증] {day.day}일차: 왕복 이동만 약 {hours}시간(편도 최장 {max_leg}분)이라 "
+            "당일치기가 빠듯합니다 — 방문지를 줄이거나 현지 1박을 고려하세요."
+        ]
 
     def _business_hours_flags(self, day) -> list[str]:  # noqa: ANN001 - DayPlan
         """ItineraryItem.type으로 업종 영업시간 위반을 결정적으로 잡는다.

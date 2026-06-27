@@ -57,6 +57,60 @@ def test_clean_itinerary_has_no_feasibility_flags() -> None:
     assert itin.feasibility_flags == []
 
 
+def test_far_excursion_daytrip_is_flagged() -> None:
+    # 편도 3시간(180분) 왕복 = 이동만 5.5시간 → 당일치기 빠듯 플래그(후라노·비에이류).
+    day = DayPlan(
+        day=3,
+        items=[
+            _item("팜 토미타", time(13, 0), time(14, 30)),
+            _item("청의 호수", time(15, 0), time(16, 0)),
+        ],
+        transfers=[
+            _transfer(180, time(10, 0), time(13, 0)),  # 숙소→근교(편도 3h)
+            _transfer(150, time(16, 0), time(18, 30)),  # 근교→숙소(귀가)
+        ],
+    )
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert any("3일차" in f and "당일치기" in f for f in itin.feasibility_flags)
+
+
+def test_close_excursion_not_flagged_as_daytrip() -> None:
+    # 편도 50분 근교 왕복(오타루류) = 이동 적음 → 당일치기 무난, 플래그 없음.
+    day = DayPlan(
+        day=2,
+        items=[
+            _item("오타루 운하", time(11, 0), time(12, 30)),
+            _item("사카이마치", time(13, 0), time(15, 0)),
+        ],
+        transfers=[
+            _transfer(50, time(10, 0), time(10, 50)),
+            _transfer(50, time(15, 0), time(15, 50)),
+        ],
+    )
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("당일치기" in f for f in itin.feasibility_flags)
+
+
+def test_in_city_day_not_flagged_as_daytrip() -> None:
+    # 시내 날: 짧은 이동(최장 30분)만 → 시외 근교가 아니라 판단 대상 아님.
+    day = DayPlan(
+        day=1,
+        items=[
+            _item("A", time(10, 0), time(11, 30)),
+            _item("B", time(12, 0), time(13, 30)),
+        ],
+        transfers=[
+            _transfer(30, time(11, 30), time(12, 0)),
+            _transfer(25, time(13, 30), time(13, 55)),
+        ],
+    )
+    itin = _itin([day])
+    PlanCriticAgent()._check_feasibility(itin)
+    assert not any("당일치기" in f for f in itin.feasibility_flags)
+
+
 def test_late_finish_is_flagged() -> None:
     # 마지막 관광이 23:30에 끝남 → 과late 종료 플래그.
     day = DayPlan(day=2, items=[_item("야경", time(21, 0), time(23, 30))])
