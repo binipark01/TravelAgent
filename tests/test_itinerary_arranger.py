@@ -462,6 +462,39 @@ def test_night_view_detection() -> None:
     assert not agent._is_anchor_stop(ArrangedStop("도톤보리", 60, 0, "도보"), None)
 
 
+def test_night_view_not_greedy_on_bar_token() -> None:
+    # '바'/'bar'는 부분일치라 일반 관광지(카사 바트요·Barri·Barcelona)를 야경으로 오분류해
+    # 22시 캡을 새게 했다. 이런 이름은 야경이 아니어야 한다(루프톱 바는 '루프톱'으로 여전히 잡힘).
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    assert not agent._is_night_view(ArrangedStop("카사 바트요(Casa Batlló)", 90, 0, "도보"), None)
+    assert not agent._is_night_view(ArrangedStop("고딕 지구(Barri Gòtic)", 90, 0, "도보"), None)
+    assert not agent._is_night_view(ArrangedStop("바르셀로나 대성당", 90, 0, "도보"), None)
+    # 진짜 야경/루프톱은 여전히 잡힌다.
+    assert agent._is_night_view(ArrangedStop("마리나베이 루프톱 바", 60, 0, "도보"), None)
+    assert agent._is_night_view(ArrangedStop("남산 야경 전망대", 60, 0, "도보"), None)
+
+
+def test_late_non_night_bar_named_sight_is_capped() -> None:
+    from datetime import time as time_cls
+
+    # '바'가 이름에 든 일반 관광지가 22시를 넘기면(야경 아님) 잘려야 한다(카사 바트요 22:30 버그).
+    arranged = ArrangedDay(
+        day=2, area="시내", note=None,
+        stops=[
+            ArrangedStop("A", 240, 30, "도보"),  # 10:00~14:00
+            ArrangedStop("카사 밀라", 180, 30, "도보"),  # 늦게
+            ArrangedStop("카사 바트요", 180, 0, "도보"),  # 22시 초과 → 캡(야경 아님)
+            ArrangedStop("숙소 부근", 30, 0, "도보"),  # anchor
+        ],
+        lunch=None, dinner=None,
+    )
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    day = agent._build_arranged_day(2, None, arranged, {}, {}, _state())
+    sightseeing = [it for it in day.items if it.type == "관광지"]
+    assert all(it.end_time <= time_cls(22, 0) for it in sightseeing)
+    assert any("숙소" in it.title for it in day.items)  # anchor 복귀 유지
+
+
 # --- 귀가 도착 캡: 먼 근교(관광은 22시 전 끝나도 귀가 이동이 자정으로 밀리는) 날 뒤 곳수 잘림 ---
 
 
