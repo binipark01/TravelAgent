@@ -20,6 +20,32 @@ def test_resolve_place_returns_none_when_llm_disabled() -> None:
     assert geo_resolver.resolve_place("시즈오카") is None
 
 
+def test_llm_resolve_parses_city_en_and_coords(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(geo_resolver, "live_llm_local_enabled", lambda settings: True)
+    monkeypatch.setattr(
+        geo_resolver,
+        "run_codex_json",
+        lambda *a, **k: {
+            "country_ko": "네덜란드", "iata": "AMS", "skyscanner": "ams",
+            "hub_note": None, "city_en": "Amsterdam", "lat": 52.3676, "lng": 4.9041,
+        },
+    )
+    r = geo_resolver._llm_resolve("암스테르담")
+    assert r is not None
+    assert r.city_en == "Amsterdam"
+    assert r.lat == 52.3676
+    assert r.lng == 4.9041
+
+
+def test_coerce_coord_rejects_bad_values() -> None:
+    assert geo_resolver._coerce_coord("48.21") == 48.21
+    assert geo_resolver._coerce_coord(16.37) == 16.37
+    assert geo_resolver._coerce_coord(None) is None
+    assert geo_resolver._coerce_coord("x") is None
+    assert geo_resolver._coerce_coord(0.0) is None  # 0,0(널섬)은 무시
+    assert geo_resolver._coerce_coord(999) is None  # 범위 밖
+
+
 def test_resolve_place_caches_single_llm_call(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
 

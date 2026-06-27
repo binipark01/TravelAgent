@@ -23,14 +23,42 @@ def _get(url: str, params: dict[str, str]) -> dict | None:
     return fetch_json(f"{url}?{urlencode(params)}", timeout=_TIMEOUT, retries=1)
 
 
-def geocode(place: str) -> tuple[float, float] | None:
-    city = place.split(",")[0].strip()
-    data = _get(_GEOCODE, {"name": city, "count": "1", "language": "ko", "format": "json"})
+def _openmeteo_geocode(name: str, language: str) -> tuple[float, float] | None:
+    data = _get(_GEOCODE, {"name": name, "count": "1", "language": language, "format": "json"})
     results = (data or {}).get("results") or []
     if not results:
         return None
     first = results[0]
     return float(first["latitude"]), float(first["longitude"])
+
+
+def geocode(place: str) -> tuple[float, float] | None:
+    """도시명 → (위도, 경도). 한국어명을 먼저 Open-Meteo로 찾고, 거기에 없으면(암스테르담·
+    비엔나처럼 한글 alt-name이 없는 도시) LLM 리졸버의 영문명·도심 좌표로 폴백한다.
+
+    이 폴백 없이는 그런 도시에서 날씨·일몰(일정 일조 반영)·교통권 hub좌표(지도 클릭 bias)가
+    조용히 비어버린다. LLM이 꺼져 있으면(오프라인) 폴백은 None이라 기존 동작과 같다.
+    """
+    city = place.split(",")[0].strip()
+    coords = _openmeteo_geocode(city, "ko")
+    if coords:
+        return coords
+    # 한글명이 Open-Meteo에 없을 때만 LLM 리졸버로 폴백(지연 import로 import 순환 회피).
+    try:
+        from travel_agent.app.llm.geo_resolver import resolve_place
+
+        resolved = resolve_place(city)
+    except Exception:  # noqa: BLE001 - 폴백이라 어떤 실패든 좌표 없음으로 처리
+        resolved = None
+    if resolved is None:
+        return None
+    if resolved.city_en:
+        coords = _openmeteo_geocode(resolved.city_en, "en")
+        if coords:
+            return coords
+    if resolved.lat is not None and resolved.lng is not None:
+        return (resolved.lat, resolved.lng)
+    return None
 
 
 def _weather_label(code: int) -> str:

@@ -19,12 +19,16 @@ from travel_agent.app.config import get_settings
 
 @dataclass(frozen=True)
 class ResolvedPlace:
-    """LLM이 해석한 한 지명의 국가·대표 공항 정보."""
+    """LLM이 해석한 한 지명의 국가·대표 공항·좌표 정보."""
 
     country_ko: str | None
     iata: str | None
     skyscanner: str | None
     hub_note: str | None
+    # 한글명이 Open-Meteo 지오코딩에 없을 때(암스테르담·비엔나 등) 폴백용 영문명·도심 좌표.
+    city_en: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 
 
 _PROMPT = (
@@ -37,7 +41,11 @@ _PROMPT = (
     '  "skyscanner": "그 도시/공항의 스카이스캐너 코드(소문자). 모르면 iata를 소문자로",\n'
     '  "hub_note": "iata가 그 도시가 아니라 인근 허브일 때만 한국어 한 문장 안내'
     "(예: 시즈오카는 국제선 직항이 적어 나고야(NGO) 도착 후 신칸센 이동 추천). 도시 자체 "
-    '국제공항이면 null"\n'
+    '국제공항이면 null",\n'
+    '  "city_en": "그 도시의 표준 영어 표기(예: Amsterdam, Vienna, Zurich). 국가만 주어졌으면 '
+    'null",\n'
+    '  "lat": 도심 위도(숫자, 소수점 4자리 정도. 모르면 null),\n'
+    '  "lng": 도심 경도(숫자, 모르면 null)\n'
     "}\n"
     "지명을 전혀 모르면 모든 값을 null로. iata는 실제 존재하는 공항 코드만 적는다.\n"
     "장소: "
@@ -55,6 +63,17 @@ def _normalize(name: str) -> str:
 
 def _clean_str(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _coerce_coord(value: object) -> float | None:
+    """위/경도를 float로(문자열 숫자 허용). 지구 범위를 벗어나거나 0,0이면 무시."""
+    try:
+        coord = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if coord == 0.0 or not -180.0 <= coord <= 180.0:
+        return None
+    return coord
 
 
 def _valid_iata(code: str) -> bool:
@@ -91,6 +110,9 @@ def _llm_resolve(name: str) -> ResolvedPlace | None:
         iata=iata,
         skyscanner=sky,
         hub_note=_clean_str(data.get("hub_note")),
+        city_en=_clean_str(data.get("city_en")),
+        lat=_coerce_coord(data.get("lat")),
+        lng=_coerce_coord(data.get("lng")),
     )
 
 

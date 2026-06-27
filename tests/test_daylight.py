@@ -2,7 +2,54 @@ from __future__ import annotations
 
 from datetime import date, time
 
+import pytest
+
 from travel_agent.app.connectors.weather import open_meteo
+from travel_agent.app.llm.geo_resolver import ResolvedPlace
+
+
+def test_geocode_falls_back_to_english_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 한글명이 Open-Meteo에 없으면(암스테르담) LLM 리졸버의 영문명으로 다시 찾는다.
+    calls: list[tuple[str, str]] = []
+
+    def fake_om(name: str, language: str):
+        calls.append((name, language))
+        if name == "Amsterdam":
+            return (52.374, 4.89)
+        return None  # 한글 '암스테르담'은 못 찾음
+
+    monkeypatch.setattr(open_meteo, "_openmeteo_geocode", fake_om)
+    monkeypatch.setattr(
+        "travel_agent.app.llm.geo_resolver.resolve_place",
+        lambda name: ResolvedPlace(
+            country_ko="네덜란드", iata="AMS", skyscanner="ams", hub_note=None,
+            city_en="Amsterdam", lat=52.37, lng=4.90,
+        ),
+    )
+    assert open_meteo.geocode("암스테르담") == (52.374, 4.89)
+    assert ("암스테르담", "ko") in calls and ("Amsterdam", "en") in calls
+
+
+def test_geocode_falls_back_to_resolver_coords(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 영문명으로도 Open-Meteo가 못 찾으면 리졸버가 준 도심 좌표를 그대로 쓴다.
+    monkeypatch.setattr(open_meteo, "_openmeteo_geocode", lambda name, language: None)
+    monkeypatch.setattr(
+        "travel_agent.app.llm.geo_resolver.resolve_place",
+        lambda name: ResolvedPlace(
+            country_ko="X", iata=None, skyscanner=None, hub_note=None,
+            city_en="Nowhereville", lat=12.34, lng=56.78,
+        ),
+    )
+    assert open_meteo.geocode("아무데나") == (12.34, 56.78)
+
+
+def test_geocode_none_when_resolver_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Open-Meteo도 못 찾고 리졸버도 None이면(오프라인 등) 기존처럼 None.
+    monkeypatch.setattr(open_meteo, "_openmeteo_geocode", lambda name, language: None)
+    monkeypatch.setattr(
+        "travel_agent.app.llm.geo_resolver.resolve_place", lambda name: None
+    )
+    assert open_meteo.geocode("아무데나") is None
 
 
 def test_local_sun_times_matches_known_values() -> None:
