@@ -111,14 +111,21 @@ def _enabled(settings: Settings) -> bool:
 
 
 def _run(prompt: str, settings: Settings) -> dict | None:
-    return run_codex_json(
-        prompt,
-        command=settings.codex_cli_command,
-        model=settings.codex_oauth_model,
-        reasoning_effort=settings.codex_reasoning_effort,
-        timeout_seconds=min(settings.codex_oauth_timeout_seconds, 200),
-        enable_web_search=True,
-    )
+    # 타임아웃·빈응답·파싱실패(=None)는 transient라 1회 재시도한다. 정상적인 '빈 결과'(근교
+    # 없음 등)는 run_codex_json이 dict를 돌려주므로 재시도 대상이 아니다 — 진짜 없는 카드의
+    # 대기시간을 2배로 늘리지 않으면서 가끔 비는 카드(체크리스트 등)만 살린다.
+    for _ in range(2):
+        result = run_codex_json(
+            prompt,
+            command=settings.codex_cli_command,
+            model=settings.codex_oauth_model,
+            reasoning_effort=settings.codex_reasoning_effort,
+            timeout_seconds=min(settings.codex_oauth_timeout_seconds, 200),
+            enable_web_search=True,
+        )
+        if result is not None:
+            return result
+    return None
 
 
 def _maps_url(place: str, destination: str) -> str:

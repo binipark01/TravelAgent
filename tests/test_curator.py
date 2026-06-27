@@ -220,6 +220,35 @@ _FAKE_LOCALTRANS = {
 }
 
 
+def test_run_retries_once_on_transient_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 첫 호출이 None(타임아웃·빈응답)이면 1회 재시도해 두 번째 결과를 쓴다.
+    from travel_agent.app.config import get_settings
+
+    calls = {"n": 0}
+
+    def fake_codex(*args, **kwargs):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else {"ok": True}
+
+    monkeypatch.setattr(curator, "run_codex_json", fake_codex)
+    assert curator._run("prompt", get_settings()) == {"ok": True}
+    assert calls["n"] == 2
+
+
+def test_run_gives_up_after_one_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from travel_agent.app.config import get_settings
+
+    calls = {"n": 0}
+
+    def fake_codex(*args, **kwargs):
+        calls["n"] += 1
+        return None
+
+    monkeypatch.setattr(curator, "run_codex_json", fake_codex)
+    assert curator._run("prompt", get_settings()) is None
+    assert calls["n"] == 2  # 최초 + 재시도 1회까지만
+
+
 def test_curate_local_transport_disabled_returns_none() -> None:
     # conftest autouse 픽스처가 ENABLE_LIVE_LLM=false → 비활성 → None(정적 데이터로 폴백 안 됨).
     assert curator.curate_local_transport("런던", "영국") is None
