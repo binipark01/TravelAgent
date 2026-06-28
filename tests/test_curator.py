@@ -220,6 +220,26 @@ _FAKE_LOCALTRANS = {
 }
 
 
+def test_recommend_destinations_disabled_returns_none() -> None:
+    # conftest autouse 픽스처가 ENABLE_LIVE_LLM=false → 비활성 → None.
+    assert curator.recommend_destinations("일본 온천") is None
+
+
+def test_recommend_destinations_parses_cities(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(
+        curator, "_run", lambda prompt, settings: {"cities": ["유후", "벳푸", "하코네", "구사쓰"]}
+    )
+    rec = curator.recommend_destinations("일본 온천 힐링", ["온천"], count=3)
+    assert rec == ["유후", "벳푸", "하코네"]  # count로 잘림
+
+
+def test_recommend_destinations_none_on_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curator, "_enabled", lambda settings: True)
+    monkeypatch.setattr(curator, "_run", lambda prompt, settings: {"cities": []})
+    assert curator.recommend_destinations("아무거나") is None
+
+
 def test_run_retries_once_on_transient_none(monkeypatch: pytest.MonkeyPatch) -> None:
     # 첫 호출이 None(타임아웃·빈응답)이면 1회 재시도해 두 번째 결과를 쓴다.
     from travel_agent.app.config import get_settings
