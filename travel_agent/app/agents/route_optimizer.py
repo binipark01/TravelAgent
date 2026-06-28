@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 from math import ceil
 
+from travel_agent.app.connectors.course_store import triple_store
 from travel_agent.app.connectors.nearby.day_trips import lookup_nearby
 from travel_agent.app.connectors.routes.local_transport import lookup_local_transport
 from travel_agent.app.connectors.weather.open_meteo import (
@@ -20,6 +21,8 @@ from travel_agent.app.llm.curator import (
 )
 from travel_agent.app.llm.itinerary_arranger import (
     ArrangedDay,
+    ArrangedItinerary,
+    ArrangedStop,
     arrange_itinerary,
     curate_community_course,
 )
@@ -97,14 +100,20 @@ class RouteAgent:
         # 사용자가 여러 '도시'를 명시했으면(로마+피렌체+베네치아) 1순위 코스도 그 도시들을 걸쳐
         # 돌도록 일수를 나눠 넘긴다 — 안 그러면 거점 한 도시에서 전 일정을 보낸다.
         course_companions = self._course_companion_days(state, brief, days_count)
-        arrangement = curate_community_course(
-            state.selected_destination or "여행지",
-            days_count=days_count,
-            interests=brief.must_include,
-            start_date=brief.start_date,
-            daylight_by_day=daylight_by_day or None,
-            companion_days=course_companions or None,
-        )
+        # 0순위: 단일도시면 트리플 실코스 스토어(63도시·1~6일)를 먼저 쓴다 — 즉시·결정적이고
+        # POI 좌표가 박혀 지도가 정확하다. 멀티시티·범위 밖이면 None → 아래 웹검색 코스로.
+        arrangement = None
+        if not course_companions:
+            arrangement = self._arrangement_from_store(state, days_count)
+        if arrangement is None:
+            arrangement = curate_community_course(
+                state.selected_destination or "여행지",
+                days_count=days_count,
+                interests=brief.must_include,
+                start_date=brief.start_date,
+                daylight_by_day=daylight_by_day or None,
+                companion_days=course_companions or None,
+            )
         if arrangement is None:
             # 폴백: 근교·숙박구역·동반도시(병렬 프리페치) + LLM 배치기.
             self._prefetch_route_lookups(state.selected_destination, days_count)
@@ -413,6 +422,28 @@ class RouteAgent:
             text += " " + (poi.type or "").lower()
         return any(k in text for k in _ANCHOR_KEYWORDS)
 
+    @staticmethod
+    def _trip_cities(state: TripPlanState) -> list[str]:
+        """이 여행이 걸치는 도시들(거점 + 명시 도시). 트리플 스토어 POI 조회 후보."""
+        cities: list[str] = []
+        if state.selected_destination:
+            cities.append(state.selected_destination.strip())
+        brief = state.brief
+        if brief:
+            for city in brief.destinations or []:
+                clean = (city or "").strip()
+                if clean and clean not in cities:
+                    cities.append(clean)
+        return cities
+
+    def _store_poi(self, state: TripPlanState, title: str):  # noqa: ANN201 - PoiInfo | None
+        """트리플 스토어에서 (여행 도시들, POI명) → 실좌표·평점. 없으면 None."""
+        for city in self._trip_cities(state):
+            info = triple_store.lookup_poi(city, title)
+            if info and info.lat is not None and info.lng is not None:
+                return info
+        return None
+
     def _arranged_item(
         self,
         stop,
@@ -422,12 +453,20 @@ class RouteAgent:
         currency: str,
         state: TripPlanState,
     ) -> ItineraryItem:
+        # 트리플 실데이터로 좌표를 채운다 — 채워지면 프론트가 지오코딩 없이 지도에 바로 찍어
+        # 오매칭(엉뚱한 도시)을 원천 차단한다. 없으면 None(기존대로 이름 지오코딩 폴백).
+        store = self._store_poi(state, stop.title)
         if poi:
+            location = poi.location
+            if store and (location.latitude is None or location.longitude is None):
+                location = location.model_copy(
+                    update={"latitude": store.lat, "longitude": store.lng}
+                )
             return ItineraryItem(
                 item_id=new_id("item"),
                 title=poi.title,
                 type=poi.type,
-                location=poi.location,
+                location=location,
                 start_time=start,
                 end_time=end,
                 estimated_cost=poi.estimated_cost,
@@ -445,7 +484,12 @@ class RouteAgent:
             item_id=new_id("item"),
             title=stop.title,
             type=stop_type,
-            location=Location(name=state.selected_destination or stop.title, area=None),
+            location=Location(
+                name=state.selected_destination or stop.title,
+                area=None,
+                latitude=store.lat if store else None,
+                longitude=store.lng if store else None,
+            ),
             start_time=start,
             end_time=end,
             estimated_cost=Money(amount=0, currency=currency),
@@ -499,6 +543,95 @@ class RouteAgent:
         if guide and guide.areas:
             return guide.areas[0].name
         return None
+
+    @staticmethod
+    def _who_from_brief(brief) -> str | None:  # noqa: ANN001
+        """동행 구성 → 트리플 who 라벨(소프트 매칭). 모호하면 인원수로 추정."""
+        style = (getattr(brief, "travel_style", "") or "").lower()
+        if (brief.children or 0) > 0:
+            return "아이와"
+        if any(k in style for k in ("신혼", "허니문", "연인")):
+            return "연인과"
+        if any(k in style for k in ("부모", "효도")):
+            return "부모님과"
+        if any(k in style for k in ("배우자", "부부")):
+            return "배우자와"
+        if "친구" in style:
+            return "친구와"
+        n = brief.travelers or brief.traveler_count or brief.adults or 1
+        return "혼자" if n == 1 else "친구와"
+
+    @staticmethod
+    def _store_duration(stop) -> int:  # noqa: ANN001 - CourseStop
+        """트리플 POI의 체류시간(분)을 카테고리·이름으로 추정(데이터엔 체류시간이 없음)."""
+        name = stop.name or ""
+        cat = stop.category or ""
+        if any(k in name for k in ("공항", "空港", "airport")):
+            return 60
+        if any(k in cat for k in ("미술관", "박물관", "테마파크")) or any(
+            k in name for k in ("디즈니", "유니버설", "테마파크")
+        ):
+            return 150
+        if any(k in name for k in ("전망", "타워", "스카이")):
+            return 60
+        return 90
+
+    @staticmethod
+    def _haversine_min(a: tuple, b: tuple) -> int:
+        """좌표 두 점 사이 도심 이동 대략 분(직선거리×우회보정 / 대중교통 평균속도)."""
+        if not a or not b or a[0] is None or b[0] is None:
+            return 12
+        from math import asin, cos, radians, sin, sqrt
+
+        lat1, lng1 = a
+        lat2, lng2 = b
+        dlat = radians(lat2 - lat1)
+        dlng = radians(lng2 - lng1)
+        h = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+        km = 2 * 6371 * asin(sqrt(h))
+        return min(max(int(km * 1.3 / 18 * 60) + 5, 5), 180)
+
+    def _arrangement_from_store(self, state: TripPlanState, days_count: int):  # noqa: ANN201
+        """트리플 실코스 스토어에서 일정 구조를 가져와 ArrangedItinerary로 변환한다(63개 도시·
+        일수 1~6, 단일도시). 좌표로 이동시간, 카테고리로 체류시간을 채운다. 없으면 None → 웹검색.
+        """
+        brief = state.brief
+        course = triple_store.lookup_course(
+            (state.selected_destination or "").strip(),
+            days_count,
+            interests=brief.must_include if brief else None,
+            who=self._who_from_brief(brief) if brief else None,
+            pace=brief.pace if brief else None,
+        )
+        if not course or not course.days:
+            return None
+        arranged_days: list[ArrangedDay] = []
+        for day_index, day_stops in enumerate(course.days, start=1):
+            attractions = [s for s in day_stops if s.type != "restaurant" and s.type != "hotel"]
+            restaurants = [s for s in day_stops if s.type == "restaurant"]
+            stops: list[ArrangedStop] = []
+            for i, cs in enumerate(attractions):
+                nxt = attractions[i + 1] if i + 1 < len(attractions) else None
+                travel = self._haversine_min((cs.lat, cs.lng), (nxt.lat, nxt.lng)) if nxt else 0
+                stops.append(
+                    ArrangedStop(
+                        title=cs.name,
+                        duration_min=self._store_duration(cs),
+                        travel_to_next_min=travel,
+                        travel_mode="대중교통",
+                    )
+                )
+            arranged_days.append(
+                ArrangedDay(
+                    day=day_index,
+                    area=course.city,
+                    note="트리플 실제 인기 코스 기반",
+                    stops=stops,
+                    lunch=restaurants[0].name if restaurants else None,
+                    dinner=restaurants[1].name if len(restaurants) > 1 else None,
+                )
+            )
+        return ArrangedItinerary(days=arranged_days)
 
     @staticmethod
     def _course_companion_days(state, brief, days_count: int) -> dict[str, int]:  # noqa: ANN001

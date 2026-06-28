@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from datetime import date
 
+from travel_agent.app.llm.curator import curate_city_pois
 from travel_agent.app.llm.itinerary_arranger import (
     ArrangedItinerary,
     arrange_itinerary,
     curate_community_course,
 )
-from travel_agent.app.llm.curator import curate_city_pois
 
 CITIES = [("오사카", 4), ("파리", 5), ("방콕", 4)]
 

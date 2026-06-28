@@ -9,10 +9,16 @@ from travel_agent.app.main import create_app
 
 
 @pytest.fixture(autouse=True)
-def _disable_live_llm() -> None:
+def _disable_live_llm(tmp_path_factory: pytest.TempPathFactory) -> None:
     # 테스트는 결정론적 fallback 경로만 사용한다 (live LLM/Codex/브라우저 호출 금지).
     os.environ["ENABLE_LIVE_LLM"] = "false"
     os.environ["ENABLE_FLIGHT_SOURCE_PROBES"] = "false"
+    # 트리플 코스 스토어(.omo)도 테스트에선 비활성 — 빈 디렉터리를 가리켜 항상 None을 돌려
+    # 기존 fallback 경로(mock 코스)를 타게 한다. 스토어 전용 테스트는 직접 env를 덮는다.
+    os.environ["TRIPLE_STORE_DIR"] = str(tmp_path_factory.mktemp("empty_triple_store"))
+    from travel_agent.app.connectors.course_store import triple_store
+
+    triple_store.clear_cache()
 
 
 @pytest.fixture()
