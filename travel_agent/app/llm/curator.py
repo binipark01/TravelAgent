@@ -68,6 +68,7 @@ _MULTICITY_CACHE: dict[str, MultiCityPlan] = {}
 _EVENTS_CACHE: dict[str, LocalEventsGuide] = {}
 _COMPANION_CACHE: dict[str, list[CompanionCity]] = {}
 _LOCALTRANS_CACHE: dict[str, LocalTransportPlan] = {}
+_RECOMMEND_CACHE: dict[str, list[str]] = {}
 
 # route_optimizer._prefetch_route_lookups가 근교·숙박구역·동반도시 큐레이션을 병렬로 돌려
 # 이 모듈의 캐시에 동시에 접근한다. 락으로 check-then-set의 dict race를 닫는다.
@@ -104,6 +105,7 @@ def clear_cache() -> None:
         _EVENTS_CACHE.clear()
         _COMPANION_CACHE.clear()
         _LOCALTRANS_CACHE.clear()
+        _RECOMMEND_CACHE.clear()
 
 
 def _enabled(settings: Settings) -> bool:
@@ -484,6 +486,47 @@ def curate_local_transport(
         )
 
     return _cached(_LOCALTRANS_CACHE, cache_key, compute)
+
+
+def recommend_destinations(
+    hint: str, interests: list[str] | None = None, count: int = 3
+) -> list[str] | None:
+    """모호한 여행 의도(hint)에 맞는 실제 해외 도시를 웹검색으로 추천한다(한국인 기준).
+
+    예: '일본 온천'→하코네·벳푸·유후인, '따뜻한 휴양지'→다낭·세부·푸켓, '유럽 배낭여행'→
+    프라하·부다페스트·빈. 도시를 콕 집지 않은 질의(분위기·테마·지역)를 구체 도시로 바꾼다.
+    비활성/실패면 None → 호출부가 기존 기본값으로 폴백.
+    """
+    settings = get_settings()
+    if not _enabled(settings) or not hint.strip():
+        return None
+    cache_key = f"{hint.strip().lower()}|{','.join(interests or [])}|{count}"
+    want = max(1, count)
+    interest_line = f"여행자 관심사: {', '.join(i for i in interests if i)}\n" if interests else ""
+    prompt = (
+        "너는 한국인 해외여행 큐레이터다. live web search로 아래 '여행 의도'에 가장 잘 맞는 실제 "
+        "해외 여행도시를 추천하라(한국에서 항공으로 가기 좋은 곳 우선). 의도가 분위기·테마"
+        "(온천·휴양·야경·미식 등)나 지역(유럽·동남아 등)이면 그에 맞는 구체적인 '도시'를 골라라"
+        "(국가·지역명 말고 도시). 실제 존재하는 도시만, 한국어 도시명으로.\n"
+        f"여행 의도: {hint}\n"
+        f"{interest_line}"
+        "출력은 설명·코드펜스 없이 JSON 하나만:\n"
+        '{"cities": ["도시명", ...]}\n'
+        f"가장 적합한 도시 {want}곳만, 첫 번째가 가장 추천."
+    )
+
+    def compute() -> list[str] | None:
+        data = _run(prompt, settings)
+        if not isinstance(data, dict):
+            return None
+        cities = [
+            c.strip()
+            for c in (data.get("cities") or [])
+            if isinstance(c, str) and c.strip()
+        ]
+        return cities[:want] or None
+
+    return _cached(_RECOMMEND_CACHE, cache_key, compute)
 
 
 def curate_stay_areas(destination: str) -> StayAreaGuide | None:

@@ -48,7 +48,9 @@ def test_full_planning_endpoint_with_mock_providers(
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ready"
-    assert data["recommended_destination"] in {"Osaka", "Tokyo", "Fukuoka"}
+    # 목적지를 '일본'(국가)으로만 말한 모호 요청 → LLM off(테스트)면 최후 기본 도시(오사카)로
+    # 떨어진다(국가명을 거점으로 두지 않음). LLM on이면 hint로 실제 도시를 추천한다.
+    assert data["recommended_destination"] in {"오사카", "Osaka", "Tokyo", "Fukuoka"}
     assert data["itinerary"]["days"]
     assert data["budget"]["total_estimated_cost"] > 0
     assert data["critic_findings"]

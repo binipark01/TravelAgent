@@ -544,9 +544,13 @@ class TravelSupervisorAgent:
                 if missing
                 else None
             )
-        if not brief.destinations:
-            brief.destinations = ["Japan"]
-        if not brief.destination_hint:
+        # 목적지가 비어도 hint(분위기·테마·지역)가 있으면 비워 둔다 — DestinationDiscoveryAgent가
+        # hint로 실제 도시를 LLM 추천한다(예: '일본 온천'→하코네). hint조차 없을 때만 최후 기본값.
+        if not brief.destinations and not (
+            brief.destination_hint and brief.destination_hint.strip()
+        ):
+            brief.destinations = ["오사카"]
+        if not brief.destination_hint and brief.destinations:
             brief.destination_hint = ", ".join(brief.destinations)
         if not brief.origin:
             brief.origin = "서울"
