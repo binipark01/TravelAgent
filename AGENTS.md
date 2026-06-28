@@ -4,6 +4,10 @@
 
 이 저장소는 CRUD 앱이 아니라 agent-runtime 프로젝트입니다.
 
+> **최근 작업 맥락:** 일정 품질(결정적 캡·일몰·영업시간)·지도 지오코딩·intake/목적지 해석·
+> 내용카드 robustness·**트리플 실코스 4.7만건 데이터셋 연동**은 [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md)에
+> 정리돼 있다. 일정/지도/추천 품질을 건드리기 전에 먼저 읽을 것.
+
 규칙:
 
 - agents는 tool을 호출한다.
