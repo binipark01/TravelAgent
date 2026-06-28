@@ -226,6 +226,7 @@ def curate_community_course(
     interests: list[str] | None,
     start_date: date | None,
     daylight_by_day: dict[int, tuple] | None = None,
+    companion_days: dict[str, int] | None = None,
 ) -> ArrangedItinerary | None:
     """디시·네이버 카페·블로그의 '실제 다녀온 코스 후기'를 웹검색해 day-by-day 일정을 종합한다.
 
@@ -240,7 +241,10 @@ def curate_community_course(
     interest_text = ", ".join(i for i in (interests or []) if i and i.strip()) or "제약 없음"
     # 시즌(월)을 키에 포함 — 프롬프트가 시즌을 반영하므로 첫 호출 달이 고착되면 안 된다.
     season_key = str(start_date.month) if start_date else ""
-    cache_key = f"{destination.strip().lower()}|{days_count}|{interest_text}|{season_key}"
+    companion_key = ",".join(f"{c}:{d}" for c, d in sorted((companion_days or {}).items()))
+    cache_key = (
+        f"{destination.strip().lower()}|{days_count}|{interest_text}|{season_key}|{companion_key}"
+    )
     with _COMMUNITY_COURSE_LOCK:
         if cache_key in _COMMUNITY_COURSE_CACHE:
             return _COMMUNITY_COURSE_CACHE[cache_key]
@@ -284,6 +288,7 @@ def curate_community_course(
         "날을 그곳에서 이어가라(왕복으로 우겨넣지 마라). 당일 왕복이 흔하면 당일치기로 하되 막차 "
         "안에. **당일치기가 흔하다는 근거가 후기에 없는 먼 곳을 거리만 보고 하루 왕복으로 넣지 "
         "마라 — 아예 빼거나 1박으로 하라.**\n"
+        f"{_multicity_block(destination, companion_days)}"
         f"{_daylight_block(daylight_by_day)}"
         f"{_business_hours_block()}"
         "출력은 설명·코드펜스 없이 아래 JSON 객체 하나만:\n"

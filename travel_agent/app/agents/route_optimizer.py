@@ -94,12 +94,16 @@ class RouteAgent:
         # 1순위: 디시·네이버카페·블로그의 '실제 다녀온 코스 후기'로 일정 구조를 가져온다.
         # 진짜 사람들의 동선이라 시간대(야경=밤)·숙소근처 시작이 자연스럽다. 못 찾으면(또는
         # 비활성) 아래 LLM 배치기로 폴백한다.
+        # 사용자가 여러 '도시'를 명시했으면(로마+피렌체+베네치아) 1순위 코스도 그 도시들을 걸쳐
+        # 돌도록 일수를 나눠 넘긴다 — 안 그러면 거점 한 도시에서 전 일정을 보낸다.
+        course_companions = self._course_companion_days(state, brief, days_count)
         arrangement = curate_community_course(
             state.selected_destination or "여행지",
             days_count=days_count,
             interests=brief.must_include,
             start_date=brief.start_date,
             daylight_by_day=daylight_by_day or None,
+            companion_days=course_companions or None,
         )
         if arrangement is None:
             # 폴백: 근교·숙박구역·동반도시(병렬 프리페치) + LLM 배치기.
@@ -495,6 +499,32 @@ class RouteAgent:
         if guide and guide.areas:
             return guide.areas[0].name
         return None
+
+    @staticmethod
+    def _course_companion_days(state, brief, days_count: int) -> dict[str, int]:  # noqa: ANN001
+        """1순위 community-course에 넘길 '명시 멀티시티' 도시별 일수.
+
+        사용자가 brief.destinations에 도시를 2곳 이상 적었으면(로마+피렌체+베네치아) 거점 도시를
+        뺀 나머지에 일수를 나눠준다(거점은 첫날·마지막날 포함해 과반). 단일 도시거나 너무 짧은
+        일정이면 빈 dict — 그 경우 코스는 거점 도시 위주로 짜이고 근교는 must_include로 다룬다.
+        근교·랜드마크(하롱베이 등)는 intake가 must_include로 넣으므로 여기 destinations엔 없다.
+        """
+        hub = (state.selected_destination or "").strip()
+        cities = [c.strip() for c in (brief.destinations or []) if c and c.strip()]
+        companions = list(dict.fromkeys(c for c in cities if c and c != hub))
+        if not companions or days_count < 3:
+            return {}
+        per = max(1, days_count // (len(companions) + 1))  # 본거지 포함해 균등 분배
+        days_map: dict[str, int] = {}
+        remaining = days_count - 1  # 본거지에 최소 1일 남긴다
+        for city in companions:
+            if remaining <= 1:
+                break
+            allotted = min(per, remaining - 1)
+            if allotted >= 1:
+                days_map[city] = allotted
+                remaining -= allotted
+        return days_map
 
     def _merge_companion_cities(
         self,

@@ -554,6 +554,24 @@ def test_home_cap_keeps_late_city_night_when_return_is_short() -> None:
     assert "C 야시장" in titles
 
 
+def test_course_companion_days_splits_explicit_multicity() -> None:
+    from travel_agent.app.schemas.brief import TripBrief
+
+    def alloc(dests, hub, days):
+        st = _state()
+        st.selected_destination = hub
+        brief = TripBrief(destinations=dests, selected_destination=hub, duration_days=days)
+        return RouteAgent._course_companion_days(st, brief, days)
+
+    # 명시 멀티시티는 거점을 뺀 도시에 일수를 나눈다(거점이 과반).
+    assert alloc(["로마", "피렌체", "베네치아"], "로마", 8) == {"피렌체": 2, "베네치아": 2}
+    assert alloc(["파리", "런던"], "파리", 7) == {"런던": 3}
+    assert alloc(["오사카", "교토", "나라"], "오사카", 5) == {"교토": 1, "나라": 1}
+    # 단일 도시·너무 짧은 일정은 멀티시티 분배 안 함(근교는 must_include로 처리).
+    assert alloc(["하노이"], "하노이", 4) == {}
+    assert alloc(["로마", "피렌체"], "로마", 2) == {}
+
+
 def test_past_home_cap_helper() -> None:
     from datetime import time as time_cls
 
