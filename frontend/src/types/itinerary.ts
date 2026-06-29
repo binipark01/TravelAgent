@@ -12,6 +12,7 @@ export interface ItineraryItem {
   source_refs: string[]
   notes: string[]
   feasibility_flags: string[]
+  rating?: number | null
 }
 
 export interface MealSuggestion {

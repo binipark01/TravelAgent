@@ -479,6 +479,7 @@ class RouteAgent:
                 source_refs=[poi.metadata.source_ref.source_id],
                 notes=poi.notes[:1],
                 feasibility_flags=[],
+                rating=poi.rating if poi.rating is not None else (store.rating if store else None),
             )
         # 풀에서 못 찾으면(드묾) 최소 정보로 만든다. 공항(첫날 도착·마지막날 출국)은 '공항',
         # 매일 출발점인 본거지(숙소 부근/역)는 '숙소'로 표시한다(관광지로 오인 방지).
@@ -502,6 +503,7 @@ class RouteAgent:
             source_refs=[],
             notes=[],
             feasibility_flags=[],
+            rating=store.rating if store else None,
         )
 
     @staticmethod

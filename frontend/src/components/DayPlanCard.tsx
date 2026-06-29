@@ -383,7 +383,9 @@ export function ItineraryItemRow({
     lng: item.location.longitude,
   })
   const cost = item.estimated_cost.amount > 0 ? formatMoney(item.estimated_cost) : null
-  const hasMeta = info?.rating != null || (info?.minutes ?? 0) > 0 || cost != null
+  // 평점은 웹큐레이션 poiInfo 우선, 없으면 일정 항목 자체의 평점(트리플 실데이터).
+  const rating = info?.rating ?? item.rating ?? null
+  const hasMeta = rating != null || (info?.minutes ?? 0) > 0 || cost != null
   return (
     <div className={`timeline-row ${trig.className}`.trim()} {...trig.interactive}>
       <time>
@@ -395,7 +397,7 @@ export function ItineraryItemRow({
       </div>
       {hasMeta && (
         <div className="timeline-row__meta">
-          {info?.rating != null && <span className="timeline-rating">★ {info.rating.toFixed(1)}</span>}
+          {rating != null && <span className="timeline-rating">★ {rating.toFixed(1)}</span>}
           {(info?.minutes ?? 0) > 0 && (
             <span className="timeline-sub">{durationLabel(info?.minutes as number)}</span>
           )}

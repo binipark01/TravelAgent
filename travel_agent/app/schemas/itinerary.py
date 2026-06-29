@@ -20,6 +20,8 @@ class ItineraryItem(StrictBaseModel):
     source_refs: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     feasibility_flags: list[str] = Field(default_factory=list)
+    # POI 평점(트리플 실데이터 등). 프론트가 별점으로 표시. 없으면 미표시.
+    rating: float | None = None
 
 
 class MealSuggestion(StrictBaseModel):
