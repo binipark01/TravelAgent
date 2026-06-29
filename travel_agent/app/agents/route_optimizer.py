@@ -591,6 +591,19 @@ class RouteAgent:
         km = 2 * 6371 * asin(sqrt(h))
         return min(max(int(km * 1.3 / 18 * 60) + 5, 5), 180)
 
+    @staticmethod
+    def _is_airport_name(name: str) -> bool:
+        return any(k in (name or "") for k in ("공항", "空港", "airport", "Airport"))
+
+    def _store_travel(self, cs, nxt) -> int:  # noqa: ANN001 - CourseStop | None
+        """트리플 코스의 연속 stop 이동(분). 공항↔시내는 공항철도/리무진이 빨라 직선거리×보정
+        으론 과대추정(나리타 등) → 고정 추정(75분). 그 외는 좌표 기반 haversine."""
+        if not nxt:
+            return 0
+        if self._is_airport_name(cs.name) or self._is_airport_name(nxt.name):
+            return 75
+        return self._haversine_min((cs.lat, cs.lng), (nxt.lat, nxt.lng))
+
     def _arrangement_from_store(self, state: TripPlanState, days_count: int):  # noqa: ANN201
         """트리플 실코스 스토어에서 일정 구조를 가져와 ArrangedItinerary로 변환한다(63개 도시·
         일수 1~6, 단일도시). 좌표로 이동시간, 카테고리로 체류시간을 채운다. 없으면 None → 웹검색.
@@ -612,7 +625,7 @@ class RouteAgent:
             stops: list[ArrangedStop] = []
             for i, cs in enumerate(attractions):
                 nxt = attractions[i + 1] if i + 1 < len(attractions) else None
-                travel = self._haversine_min((cs.lat, cs.lng), (nxt.lat, nxt.lng)) if nxt else 0
+                travel = self._store_travel(cs, nxt)
                 stops.append(
                     ArrangedStop(
                         title=cs.name,

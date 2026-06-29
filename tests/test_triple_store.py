@@ -91,3 +91,18 @@ def test_route_agent_uses_store_course_with_coords(store_dir) -> None:
     assert sights and all(x.location.latitude is not None for x in sights)
     # 공항 북엔드 유지.
     assert "공항" in it.days[0].items[0].title
+
+
+def test_store_travel_caps_airport_legs() -> None:
+    from travel_agent.app.connectors.course_store.triple_store import CourseStop
+
+    agent = RouteAgent(build_mock_provider_bundle().routes)
+    airport = CourseStop("나리타 국제공항", "attraction", 35.77, 140.38, 4.2, "관광명소")
+    city = CourseStop("아사쿠사", "attraction", 35.72, 139.80, 4.4, "관광명소")
+    near = CourseStop("센소지", "attraction", 35.715, 139.797, 4.3, "관광명소")
+    # 공항이 끼면 직선거리 과대추정 대신 고정 75분.
+    assert agent._store_travel(airport, city) == 75
+    assert agent._store_travel(city, airport) == 75
+    # 가까운 시내끼리는 좌표 기반(75분 미만), 마지막 stop은 0.
+    assert 0 < agent._store_travel(city, near) < 75
+    assert agent._store_travel(city, None) == 0

@@ -51,3 +51,24 @@ def test_non_korean_passport_falls_back_to_official_check() -> None:
 def test_missing_passport_is_flagged_for_unknown_destination() -> None:
     result = lookup_entry_requirements("Unknownville", None, None, None)
     assert "passport_country" in result.missing_required_info
+
+
+def test_visa_agent_skips_domestic() -> None:
+    # 국내(제주·부산)는 국제 입국 요건이 없어 비자 카드를 생략한다. 해외는 채운다.
+    from travel_agent.app.agents.visa import VisaAgent
+    from travel_agent.app.schemas.brief import TripBrief
+    from travel_agent.app.schemas.trip import TripPlanState
+    from travel_agent.app.utils.ids import new_id
+
+    def visa_for(city: str):
+        st = TripPlanState(trip_id=new_id("t"), currency="KRW", raw_user_message="x")
+        st.selected_destination = city
+        st.brief = TripBrief(
+            selected_destination=city, destinations=[city], passport_country="한국"
+        )
+        VisaAgent().run(st)
+        return st.visa_result
+
+    assert visa_for("제주도") is None
+    assert visa_for("부산") is None
+    assert visa_for("도쿄") is not None
