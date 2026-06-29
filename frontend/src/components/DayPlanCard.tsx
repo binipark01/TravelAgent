@@ -252,6 +252,8 @@ export function DayPlanCard({
                 label: cleanDisplayText(meal.title),
                 area: cleanDisplayText(meal.area),
                 region: day.area,
+                lat: meal.latitude,
+                lng: meal.longitude,
               })
               return (
                 <div

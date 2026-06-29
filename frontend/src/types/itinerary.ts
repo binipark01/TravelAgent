@@ -24,6 +24,8 @@ export interface MealSuggestion {
   estimated_cost: Money
   source_refs: string[]
   notes: string[]
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export interface TransferSegment {

@@ -32,6 +32,9 @@ class MealSuggestion(StrictBaseModel):
     estimated_cost: Money
     source_refs: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    # 지도에 좌표로 바로 찍기 위한 실좌표(트리플 스토어 등). 없으면 프론트가 이름 지오코딩.
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class TransferSegment(StrictBaseModel):

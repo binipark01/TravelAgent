@@ -89,6 +89,9 @@ def test_route_agent_uses_store_course_with_coords(store_dir) -> None:
     # 스토어 코스에서 왔으므로 관광 항목에 실좌표가 박힌다(지도 정확도).
     sights = [x for d in it.days for x in d.items if x.type == "관광지"]
     assert sights and all(x.location.latitude is not None for x in sights)
+    # 식당(meal)에도 트리플 좌표가 박힌다(지도에서 이름 지오코딩 없이 바로 찍힘).
+    meals = [m for d in it.days for m in d.meals]
+    assert meals and all(m.latitude is not None for m in meals)
     # 공항 북엔드 유지.
     assert "공항" in it.days[0].items[0].title
 

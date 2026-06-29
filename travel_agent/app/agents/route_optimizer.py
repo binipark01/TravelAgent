@@ -260,17 +260,22 @@ class RouteAgent:
                     notes = [why]
                 source_refs = [poi.metadata.source_ref.source_id]
                 area = poi.type or ""
+            meal_title = poi.title if poi else title
+            # 식당도 트리플 좌표를 박아 지도에서 이름 지오코딩(오매칭) 없이 바로 찍히게 한다.
+            store = self._store_poi(state, meal_title)
             day.meals.append(
                 MealSuggestion(
                     item_id=new_id("meal"),
                     meal_type=meal_type,
-                    title=poi.title if poi else title,
+                    title=meal_title,
                     area=area,
                     start_time=start,
                     end_time=end,
                     estimated_cost=Money(amount=0, currency=currency),
                     source_refs=source_refs,
                     notes=notes,
+                    latitude=store.lat if store else None,
+                    longitude=store.lng if store else None,
                 )
             )
 
